@@ -19,7 +19,7 @@ import com.apagones.habana.parser.TelegramPost
  *  2. Descarga los posts del canal público con Jsoup ([TelegramChannelParser]).
  *  3. Procesa SOLO los posts con id > último visto:
  *       - si mencionan un circuito del usuario -> notificación local e historial,
- *       - si indican afectación o restablecimiento -> actualiza el estado visible del circuito,
+ *       - si indican afectación o restablecimiento por proximidad de párrafos -> actualiza el estado visible,
  *       - si contienen "Situación del SEN" y la opción está activa -> notificación e historial.
  *  4. Actualiza el último id visto y la hora de última revisión.
  *
@@ -90,13 +90,18 @@ class MonitoringWorker(
         val matched = MentionMatcher.findMatchingCircuits(post.text, circuits)
         if (matched.isNotEmpty()) {
             repo.markCircuitsKnown(matched)
-        }
 
-        // Actualizar estado del circuito (Afectado vs Restablecido) según palabras clave del mensaje
-        val statusType = MentionMatcher.detectStatusUpdate(post.text)
-        if (statusType != null && matched.isNotEmpty()) {
-            val isAffected = statusType == MentionMatcher.StatusType.AFFECTED
-            repo.setCircuitsAffected(matched, isAffected)
+            // Análisis avanzado por proximidad de párrafos (soporta posts con múltiples estados)
+            val circuitStatuses = MentionMatcher.detectCircuitStatuses(post.text, matched)
+            val affectedList = circuitStatuses.filter { it.value == MentionMatcher.StatusType.AFFECTED }.keys.toList()
+            val restoredList = circuitStatuses.filter { it.value == MentionMatcher.StatusType.RESTORED }.keys.toList()
+
+            if (affectedList.isNotEmpty()) {
+                repo.setCircuitsAffected(affectedList, true)
+            }
+            if (restoredList.isNotEmpty()) {
+                repo.setCircuitsAffected(restoredList, false)
+            }
         }
 
         for ((index, circuit) in matched.withIndex()) {
