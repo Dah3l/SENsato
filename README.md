@@ -1,0 +1,2 @@
+# SENsato
+Información afectaciones
