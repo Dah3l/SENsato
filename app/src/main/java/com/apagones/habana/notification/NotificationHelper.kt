@@ -12,35 +12,65 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.apagones.habana.MainActivity
 import com.apagones.habana.R
+import com.apagones.habana.data.AppSettings
+import com.apagones.habana.receiver.NotificationActionReceiver
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * Helper de notificaciones locales.
- * Crea el canal "Apagones" (alta prioridad) y publica avisos que, al tocarlos,
- * abren el post original del canal en el navegador.
+ * Crea los canales "Apagones" (alta prioridad para alertas) y "Estado del monitoreo"
+ * (prioridad baja para la notificación permanente con cuenta regresiva).
  */
 object NotificationHelper {
 
-    /** Id del canal de notificaciones (nombre visible: "Apagones"). */
+    /** Id del canal de alertas (nombre visible: "Apagones"). */
     const val CHANNEL_ID = "apagones_channel"
+
+    /** Id del canal de estado del servicio (nombre visible: "Estado del monitoreo"). */
+    const val STATUS_CHANNEL_ID = "apagones_status_channel"
 
     /** Prefijo para generar ids únicos por post/circuito. */
     private const val NOTIF_ID_BASE = 4000
 
+    /** Id fijo para la notificación permanente de estado. */
+    private const val NOTIF_ID_STATUS = 1001
+
+    /** Request codes para PendingIntents del estado. */
+    private const val REQ_OPEN_APP = 2001
+    private const val REQ_ACTION_PAUSE = 2002
+    private const val REQ_ACTION_RESUME = 2003
+
     /**
-     * Crea el canal de notificaciones. Seguro llamarlo varias veces:
-     * si ya existe, Android lo ignora. Llamar desde Application.onCreate().
+     * Crea los canales de notificaciones. Seguro llamarlo varias veces:
+     * si ya existen, Android lo ignora. Llamar desde Application.onCreate().
      */
     fun createChannel(context: Context) {
-        val manager = context.getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+
+        // 1. Canal de alertas de apagones (alta prioridad)
+        val alertChannel = NotificationChannel(
             CHANNEL_ID,
-            context.getString(R.string.notif_channel_name), // "Apagones"
-            NotificationManager.IMPORTANCE_HIGH              // alta prioridad: interrumpe
+            context.getString(R.string.notif_channel_name),
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = context.getString(R.string.notif_channel_desc)
         }
-        manager.createNotificationChannel(channel)
+
+        // 2. Canal de estado permanente (prioridad baja: no vibra ni suena)
+        val statusChannel = NotificationChannel(
+            STATUS_CHANNEL_ID,
+            context.getString(R.string.status_channel_name),
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = context.getString(R.string.status_channel_desc)
+            setShowBadge(false)
+        }
+
+        manager.createNotificationChannel(alertChannel)
+        manager.createNotificationChannel(statusChannel)
     }
 
     /** true si podemos publicar notificaciones (en API<33 siempre true). */
@@ -56,11 +86,6 @@ object NotificationHelper {
 
     /**
      * Publica una notificación local con el texto del aviso.
-     *
-     * @param title   Título (ej: "⚡ Apagón mencionado: AL53")
-     * @param text    Cuerpo: fragmento o texto completo del post
-     * @param postUrl URL del post en t.me, se abre al tocar la notificación
-     * @param notifId Identificador único (se deriva del id del post + circuito)
      */
     fun showNotification(
         context: Context,
@@ -71,16 +96,13 @@ object NotificationHelper {
     ) {
         if (!havePermission(context)) return
 
-        // Intent implícito: abre https://t.me/EmpresaElectricaDeLaHabana/<id>
-        // en el navegador (o en Telegram si está instalado; no usamos setPackage
-        // a propósito para permitir ambos).
         val viewIntent = Intent(Intent.ACTION_VIEW, Uri.parse(postUrl)).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
 
         val pendingIntent = PendingIntent.getActivity(
             context,
-            notifId, // requestCode único por notificación
+            notifId,
             viewIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -89,7 +111,6 @@ object NotificationHelper {
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(text)
-            // BigTextStyle permite leer el aviso completo desplegado
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -99,5 +120,107 @@ object NotificationHelper {
 
         NotificationManagerCompat.from(context)
             .notify(NOTIF_ID_BASE + notifId, notification)
+    }
+
+    /**
+     * Actualiza o publica la notificación permanente de estado en la barra de tareas.
+     */
+    fun updateStatusNotification(context: Context, settings: AppSettings) {
+        if (!havePermission(context) || !settings.showPersistentNotification) {
+            cancelStatusNotification(context)
+            return
+        }
+
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openAppPendingIntent = PendingIntent.getActivity(
+            context,
+            REQ_OPEN_APP,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, STATUS_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(openAppPendingIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+
+        if (settings.paused) {
+            val resumeIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+                action = NotificationActionReceiver.ACTION_RESUME
+            }
+            val resumePendingIntent = PendingIntent.getBroadcast(
+                context,
+                REQ_ACTION_RESUME,
+                resumeIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            builder.setContentTitle(context.getString(R.string.notif_status_paused_title))
+                .setContentText(context.getString(R.string.notif_status_paused_text))
+                .setUsesChronometer(false)
+                .addAction(
+                    android.R.drawable.ic_media_play,
+                    context.getString(R.string.action_resume),
+                    resumePendingIntent
+                )
+        } else {
+            val pauseIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+                action = NotificationActionReceiver.ACTION_PAUSE
+            }
+            val pausePendingIntent = PendingIntent.getBroadcast(
+                context,
+                REQ_ACTION_PAUSE,
+                pauseIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val lastCheckStr = if (settings.lastCheckMillis > 0) {
+                DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(settings.lastCheckMillis))
+            } else {
+                context.getString(R.string.notif_status_never_scanned)
+            }
+
+            val nextScanTarget = if (settings.lastCheckMillis > 0) {
+                settings.lastCheckMillis + 2 * 60 * 1000
+            } else {
+                System.currentTimeMillis() + 2 * 60 * 1000
+            }
+            val effectiveTarget = if (nextScanTarget > System.currentTimeMillis()) {
+                nextScanTarget
+            } else {
+                System.currentTimeMillis() + 2 * 60 * 1000
+            }
+
+            builder.setContentTitle(context.getString(R.string.notif_status_active_title))
+                .setContentText(context.getString(R.string.notif_status_last_scan, lastCheckStr))
+                .setWhen(effectiveTarget)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
+                .addAction(
+                    android.R.drawable.ic_media_pause,
+                    context.getString(R.string.action_pause),
+                    pausePendingIntent
+                )
+        }
+
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIF_ID_STATUS, builder.build())
+        } catch (e: SecurityException) {
+            // Ignorar si se revocó el permiso de notificaciones dinámicamente
+        }
+    }
+
+    /** Cancela la notificación permanente de estado. */
+    fun cancelStatusNotification(context: Context) {
+        try {
+            NotificationManagerCompat.from(context).cancel(NOTIF_ID_STATUS)
+        } catch (e: Exception) {
+            // Ignorar errores al cancelar
+        }
     }
 }

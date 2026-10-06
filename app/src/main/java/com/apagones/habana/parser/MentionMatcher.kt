@@ -15,10 +15,62 @@ object MentionMatcher {
      */
     private const val NATIONAL_REPORT_PHRASE_NO_ACCENTS = "Situacion del SEN"
 
+    enum class StatusType {
+        RESTORED, AFFECTED
+    }
+
     /** true si el post corresponde al parte nacional del SEN. */
     fun isNationalReport(text: String): Boolean =
         text.contains(NATIONAL_REPORT_PHRASE, ignoreCase = true) ||
             text.contains(NATIONAL_REPORT_PHRASE_NO_ACCENTS, ignoreCase = true)
+
+    /**
+     * Analiza el texto del post y determina si es un aviso de afectación o de restablecimiento
+     * basándose en las palabras clave y dando prioridad a la primera palabra clave que aparezca
+     * en el mensaje, así como a las pistas de emojis (🟢☑️ para operativo, 🚨‼️🚧📉🛑 para afectado).
+     */
+    fun detectStatusUpdate(text: String): StatusType? {
+        val lower = text.lowercase()
+
+        val restoredKeywords = listOf(
+            "queda restablecido", "queda restablecio",
+            "restablecido", "restablecio",
+            "se restablece",
+            "se restableció", "se restablecio",
+            "restableció", "restablecio"
+        )
+        val affectedKeywords = listOf(
+            "afectado",
+            "afecta",
+            "se afecta",
+            "se afectó", "se afecto"
+        )
+
+        val firstRestoredIndex = restoredKeywords.minOfOrNull { keyword ->
+            val idx = lower.indexOf(keyword)
+            if (idx >= 0) idx else Int.MAX_VALUE
+        } ?: Int.MAX_VALUE
+
+        val firstAffectedIndex = affectedKeywords.minOfOrNull { keyword ->
+            val idx = lower.indexOf(keyword)
+            if (idx >= 0) idx else Int.MAX_VALUE
+        } ?: Int.MAX_VALUE
+
+        if (firstRestoredIndex == Int.MAX_VALUE && firstAffectedIndex == Int.MAX_VALUE) {
+            return null
+        }
+
+        val hasRestoredEmoji = text.contains("🟢") || text.contains("☑️")
+        val hasAffectedEmoji = text.contains("🚨") || text.contains("‼️") || text.contains("🚧") || text.contains("📉") || text.contains("🛑")
+
+        return when {
+            firstRestoredIndex < firstAffectedIndex -> StatusType.RESTORED
+            firstAffectedIndex < firstRestoredIndex -> StatusType.AFFECTED
+            hasRestoredEmoji && !hasAffectedEmoji -> StatusType.RESTORED
+            hasAffectedEmoji && !hasRestoredEmoji -> StatusType.AFFECTED
+            else -> StatusType.RESTORED
+        }
+    }
 
     /**
      * Devuelve los circuitos mencionados en [text].

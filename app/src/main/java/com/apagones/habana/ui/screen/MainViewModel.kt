@@ -48,6 +48,21 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
     fun setPaused(paused: Boolean) {
         viewModelScope.launch { repo.setPaused(paused) }
     }
+
+    /** Muestra/oculta la notificación permanente de estado. */
+    fun setShowPersistentNotification(enabled: Boolean) {
+        viewModelScope.launch { repo.setShowPersistentNotification(enabled) }
+    }
+
+    /** Limpia el historial de avisos. */
+    fun clearNotifications() {
+        viewModelScope.launch { repo.clearNotifications() }
+    }
+
+    /** Marca si ya se mostró el onboarding. */
+    fun setFirstRunCompleted(completed: Boolean) {
+        viewModelScope.launch { repo.setFirstRunCompleted(completed) }
+    }
 }
 
 /** Factory sencilla: el VM solo necesita el repositorio (sin DI framework). */

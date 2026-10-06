@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Apagones Habana</string>
+    <string name="app_name">Mi Circuito</string>
 
     <!-- Pantalla principal -->
     <string name="title_circuits">Circuitos monitoreados</string>
@@ -13,7 +13,7 @@
     <string name="snack_duplicate_circuit">Ese circuito ya está en la lista</string>
 
     <!-- Estado del servicio -->
-    <string name="status_active">La app revisa el canal cada 15 minutos en segundo plano.</string>
+    <string name="status_active">La app revisa el canal cada 2 minutos en segundo plano.</string>
     <string name="status_paused">Monitoreo pausado</string>
     <string name="action_pause">Pausar</string>
     <string name="action_resume">Reanudar</string>
@@ -32,8 +32,57 @@
     <string name="switch_national">Notificarme también el parte nacional ("Situación del SEN")</string>
 
     <!-- Notificaciones -->
-    <string name="notif_channel_name">Apagones</string>
+    <string name="notif_channel_name">Mi Circuito</string>
     <string name="notif_channel_desc">Avisos cuando la Empresa Eléctrica menciona tus circuitos</string>
-    <string name="notif_title_circuit">⚡ Apagón mencionado: %1$s</string>
+    <string name="notif_title_circuit">⚡ Circuito mencionado: %1$s</string>
     <string name="notif_title_national">📢 Parte nacional del SEN</string>
+
+    <!-- Canal de notificación permanente -->
+    <string name="status_channel_name">Estado del monitoreo</string>
+    <string name="status_channel_desc">Muestra si el monitoreo está activo y la cuenta regresiva al próximo escaneo</string>
+    <string name="notif_status_active_title">Monitoreo activo</string>
+    <string name="notif_status_paused_title">Monitoreo pausado</string>
+    <string name="notif_status_last_scan">Último escaneo: %1$s</string>
+    <string name="notif_status_never_scanned">Aún no se ha realizado ningún escaneo</string>
+    <string name="notif_status_paused_text">Toca o presiona Reanudar para continuar el monitoreo</string>
+    <string name="switch_persistent_notif">Notificación permanente de estado</string>
+    <string name="switch_persistent_notif_desc">Muestra el estado en la barra de tareas y la cuenta regresiva al próximo escaneo</string>
+    <string name="next_scan_time">Próximo escaneo aprox: %1$s</string>
+
+    <!-- Historial -->
+    <string name="title_history">Historial de avisos</string>
+    <string name="empty_history">Aún no hay avisos registrados en el historial.</string>
+    <string name="action_clear_history">Limpiar</string>
+    <string name="action_view_post">Ver publicación original</string>
+    <string name="tab_monitoring">Monitoreo</string>
+    <string name="tab_history">Historial</string>
+    <string name="tab_preferences">Preferencias</string>
+
+    <!-- Estado de circuitos -->
+    <string name="circuit_status_affected">🔴 Afectado</string>
+    <string name="circuit_status_normal">🟢 Operativo</string>
+    <string name="circuit_status_waiting">⏳ En espera (sin datos)</string>
+
+    <!-- Diálogos de confirmación -->
+    <string name="dialog_delete_circuit_title">Eliminar circuito</string>
+    <string name="dialog_delete_circuit_msg">¿Estás seguro de que deseas eliminar el circuito %1$s de la lista de monitoreo?</string>
+    <string name="dialog_clear_history_title">Limpiar historial</string>
+    <string name="dialog_clear_history_msg">¿Estás seguro de que deseas borrar todo el historial de avisos?</string>
+    <string name="dialog_cancel">Cancelar</string>
+    <string name="dialog_confirm">Eliminar</string>
+    <string name="dialog_confirm_clear">Limpiar</string>
+
+    <!-- Onboarding / Tutorial -->
+    <string name="onboarding_title_1">¡Bienvenido a Mi Circuito!</string>
+    <string name="onboarding_desc_1">Tu aplicación para monitorear el estado del servicio eléctrico en tiempo real directamente desde los reportes oficiales de Telegram.</string>
+    <string name="onboarding_title_2">1. Agrega tus circuitos</string>
+    <string name="onboarding_desc_2">Añade los códigos de tus circuitos (ej: AL53, GC19) en la pestaña Monitoreo para empezar a recibirlos.</string>
+    <string name="onboarding_title_3">2. Estados en tiempo real</string>
+    <string name="onboarding_desc_3">Sabrás al instante si tu circuito está en Espera, Operativo 🟢 o Afectado 🔴 según los mensajes analizados automáticamente.</string>
+    <string name="onboarding_title_4">3. Monitoreo constante</string>
+    <string name="onboarding_desc_4">La app escanea cada 2 minutos en segundo plano con una notificación permanente en la barra de tareas y un historial completo.</string>
+    <string name="onboarding_next">Siguiente</string>
+    <string name="onboarding_prev">Anterior</string>
+    <string name="onboarding_finish">Entendido</string>
+    <string name="onboarding_help_cd">Ayuda y tutorial</string>
 </resources>

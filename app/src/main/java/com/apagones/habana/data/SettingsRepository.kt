@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -31,7 +32,17 @@ data class AppSettings(
     /** Momento (epoch millis) de la última ejecución exitosa del worker. */
     val lastCheckMillis: Long = 0L,
     /** Monitoreo pausado por el usuario. */
-    val paused: Boolean = false
+    val paused: Boolean = false,
+    /** Notificación permanente en la barra de tareas. */
+    val showPersistentNotification: Boolean = true,
+    /** Historial de avisos recibidos en la app. */
+    val notifications: List<AppNotification> = emptyList(),
+    /** Circuitos actualmente afectados según los reportes del canal. */
+    val affectedCircuits: Set<String> = emptySet(),
+    /** Circuitos que han recibido al menos un reporte desde que fueron agregados. */
+    val knownCircuits: Set<String> = emptySet(),
+    /** true si ya se mostró el onboarding/tutorial inicial. */
+    val firstRunCompleted: Boolean = false
 )
 
 /**
@@ -46,32 +57,56 @@ class SettingsRepository(private val context: Context) {
         val NOTIFY_NATIONAL = booleanPreferencesKey("notify_national")
         val LAST_CHECK = longPreferencesKey("last_check_millis")
         val PAUSED = booleanPreferencesKey("paused")
+        val SHOW_PERSISTENT_NOTIF = booleanPreferencesKey("show_persistent_notif")
+        val NOTIFICATION_HISTORY = stringSetPreferencesKey("notification_history")
+        val AFFECTED_CIRCUITS = stringSetPreferencesKey("affected_circuits")
+        val KNOWN_CIRCUITS = stringSetPreferencesKey("known_circuits")
+        val FIRST_RUN_COMPLETED = booleanPreferencesKey("first_run_completed")
     }
 
     /** Flujo reactivo con toda la configuración (la UI lo observa). */
     val settings: Flow<AppSettings> = context.dataStore.data.map { prefs ->
+        val notifSet = prefs[Keys.NOTIFICATION_HISTORY] ?: emptySet()
+        val notifList = notifSet.mapNotNull { AppNotification.fromJson(it) }
+            .sortedByDescending { it.timestamp }
+        val affectedSet = prefs[Keys.AFFECTED_CIRCUITS] ?: emptySet()
+        val knownSet = prefs[Keys.KNOWN_CIRCUITS] ?: emptySet()
+
         AppSettings(
             circuits = prefs[Keys.CIRCUITS]?.sorted() ?: emptyList(),
             lastSeenPostId = prefs[Keys.LAST_SEEN_ID] ?: 0L,
             notifyNationalReport = prefs[Keys.NOTIFY_NATIONAL] ?: false,
             lastCheckMillis = prefs[Keys.LAST_CHECK] ?: 0L,
-            paused = prefs[Keys.PAUSED] ?: false
+            paused = prefs[Keys.PAUSED] ?: false,
+            showPersistentNotification = prefs[Keys.SHOW_PERSISTENT_NOTIF] ?: true,
+            notifications = notifList,
+            affectedCircuits = affectedSet,
+            knownCircuits = knownSet,
+            firstRunCompleted = prefs[Keys.FIRST_RUN_COMPLETED] ?: false
         )
     }
 
     /** Lee la configuración una sola vez (para el worker, fuera de Compose). */
     suspend fun readOnce(): AppSettings {
-        var result = AppSettings()
-        context.dataStore.data.take(1).collect { prefs ->
-            result = AppSettings(
-                circuits = prefs[Keys.CIRCUITS]?.sorted() ?: emptyList(),
-                lastSeenPostId = prefs[Keys.LAST_SEEN_ID] ?: 0L,
-                notifyNationalReport = prefs[Keys.NOTIFY_NATIONAL] ?: false,
-                lastCheckMillis = prefs[Keys.LAST_CHECK] ?: 0L,
-                paused = prefs[Keys.PAUSED] ?: false
-            )
-        }
-        return result
+        val prefs = context.dataStore.data.first()
+        val notifSet = prefs[Keys.NOTIFICATION_HISTORY] ?: emptySet()
+        val notifList = notifSet.mapNotNull { AppNotification.fromJson(it) }
+            .sortedByDescending { it.timestamp }
+        val affectedSet = prefs[Keys.AFFECTED_CIRCUITS] ?: emptySet()
+        val knownSet = prefs[Keys.KNOWN_CIRCUITS] ?: emptySet()
+
+        return AppSettings(
+            circuits = prefs[Keys.CIRCUITS]?.sorted() ?: emptyList(),
+            lastSeenPostId = prefs[Keys.LAST_SEEN_ID] ?: 0L,
+            notifyNationalReport = prefs[Keys.NOTIFY_NATIONAL] ?: false,
+            lastCheckMillis = prefs[Keys.LAST_CHECK] ?: 0L,
+            paused = prefs[Keys.PAUSED] ?: false,
+            showPersistentNotification = prefs[Keys.SHOW_PERSISTENT_NOTIF] ?: true,
+            notifications = notifList,
+            affectedCircuits = affectedSet,
+            knownCircuits = knownSet,
+            firstRunCompleted = prefs[Keys.FIRST_RUN_COMPLETED] ?: false
+        )
     }
 
     /** Agrega un circuito (normalizado a mayúsculas). Devuelve false si ya existía. */
@@ -95,6 +130,16 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { prefs ->
             val current = prefs[Keys.CIRCUITS] ?: return@edit
             prefs[Keys.CIRCUITS] = HashSet(current - normalized)
+
+            val affected = prefs[Keys.AFFECTED_CIRCUITS] ?: emptySet()
+            if (affected.contains(normalized)) {
+                prefs[Keys.AFFECTED_CIRCUITS] = HashSet(affected - normalized)
+            }
+
+            val known = prefs[Keys.KNOWN_CIRCUITS] ?: emptySet()
+            if (known.contains(normalized)) {
+                prefs[Keys.KNOWN_CIRCUITS] = HashSet(known - normalized)
+            }
         }
     }
 
@@ -119,6 +164,66 @@ class SettingsRepository(private val context: Context) {
     /** Pausa/reanuda el monitoreo en segundo plano. */
     suspend fun setPaused(paused: Boolean) {
         context.dataStore.edit { prefs -> prefs[Keys.PAUSED] = paused }
+    }
+
+    /** Muestra/oculta la notificación permanente de estado. */
+    suspend fun setShowPersistentNotification(enabled: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.SHOW_PERSISTENT_NOTIF] = enabled }
+    }
+
+    /** Marca si ya se mostró el onboarding/tutorial de bienvenida. */
+    suspend fun setFirstRunCompleted(completed: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.FIRST_RUN_COMPLETED] = completed }
+    }
+
+    /** Agrega un aviso al historial (máximo 50). */
+    suspend fun addNotification(notification: AppNotification) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.NOTIFICATION_HISTORY] ?: emptySet()
+            val updated = mutableSetOf(notification.toJson())
+            val parsed = current.mapNotNull { AppNotification.fromJson(it) }
+                .sortedByDescending { it.timestamp }
+                .take(49)
+            for (item in parsed) {
+                updated.add(item.toJson())
+            }
+            prefs[Keys.NOTIFICATION_HISTORY] = updated
+        }
+    }
+
+    /** Limpia el historial de avisos. */
+    suspend fun clearNotifications() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.NOTIFICATION_HISTORY)
+        }
+    }
+
+    /** Marca o desmarca circuitos como afectados según los reportes. */
+    suspend fun setCircuitsAffected(circuits: List<String>, affected: Boolean) {
+        if (circuits.isEmpty()) return
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.AFFECTED_CIRCUITS] ?: emptySet()
+            val updated = HashSet(current)
+            val normalized = circuits.map { normalizeCircuit(it) }
+            if (affected) {
+                updated.addAll(normalized)
+            } else {
+                updated.removeAll(normalized)
+            }
+            prefs[Keys.AFFECTED_CIRCUITS] = updated
+        }
+    }
+
+    /** Marca circuitos como conocidos (han aparecido en al menos un reporte). */
+    suspend fun markCircuitsKnown(circuits: List<String>) {
+        if (circuits.isEmpty()) return
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.KNOWN_CIRCUITS] ?: emptySet()
+            val updated = HashSet(current)
+            val normalized = circuits.map { normalizeCircuit(it) }
+            updated.addAll(normalized)
+            prefs[Keys.KNOWN_CIRCUITS] = updated
+        }
     }
 
     companion object {

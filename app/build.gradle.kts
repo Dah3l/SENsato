@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.apagones.habana"
     compileSdk = 34
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "com.apagones.habana"
@@ -56,6 +57,7 @@ dependencies {
     // --- Activity y ciclo de vida Compose ---
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6")
 
     // --- WorkManager (trabajo en segundo plano cada 15 min) ---
     implementation("androidx.work:work-runtime-ktx:2.9.1")
