@@ -185,20 +185,21 @@ object NotificationHelper {
                 context.getString(R.string.notif_status_never_scanned)
             }
 
+            val intervalMillis = 2 * 60 * 1000L
+            val now = System.currentTimeMillis()
             val nextScanTarget = if (settings.lastCheckMillis > 0) {
-                settings.lastCheckMillis + 2 * 60 * 1000
+                var target = settings.lastCheckMillis + intervalMillis
+                while (target <= now) {
+                    target += intervalMillis
+                }
+                target
             } else {
-                System.currentTimeMillis() + 2 * 60 * 1000
-            }
-            val effectiveTarget = if (nextScanTarget > System.currentTimeMillis()) {
-                nextScanTarget
-            } else {
-                System.currentTimeMillis() + 2 * 60 * 1000
+                now + intervalMillis
             }
 
             builder.setContentTitle(context.getString(R.string.notif_status_active_title))
                 .setContentText(context.getString(R.string.notif_status_last_scan, lastCheckStr))
-                .setWhen(effectiveTarget)
+                .setWhen(nextScanTarget)
                 .setUsesChronometer(true)
                 .setChronometerCountDown(true)
                 .addAction(

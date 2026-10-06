@@ -683,9 +683,18 @@ private fun StatusCard(
             )
 
             if (!settings.paused) {
-                val nextScanTarget = if (settings.lastCheckMillis > 0) settings.lastCheckMillis + 2 * 60 * 1000 else System.currentTimeMillis() + 2 * 60 * 1000
-                val effectiveTarget = if (nextScanTarget > System.currentTimeMillis()) nextScanTarget else System.currentTimeMillis() + 2 * 60 * 1000
-                val nextScanStr = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(effectiveTarget))
+                val intervalMillis = 2 * 60 * 1000L
+                val now = System.currentTimeMillis()
+                val nextScanTarget = if (settings.lastCheckMillis > 0) {
+                    var target = settings.lastCheckMillis + intervalMillis
+                    while (target <= now) {
+                        target += intervalMillis
+                    }
+                    target
+                } else {
+                    now + intervalMillis
+                }
+                val nextScanStr = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(nextScanTarget))
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = stringResource(R.string.next_scan_time, nextScanStr),
