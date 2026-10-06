@@ -1,0 +1,13 @@
+# Gradle
+.gradle/
+build/
+
+# Android specific
+*.apk
+*.aab
+*.ap_
+*.dex
+local.propertiesnode_modules/
+.next/
+dist/
+*.log

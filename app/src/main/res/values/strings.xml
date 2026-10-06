@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Apagones Habana</string>
+
+    <!-- Pantalla principal -->
+    <string name="title_circuits">Circuitos monitoreados</string>
+    <string name="hint_add_circuit">Ej: AL53, GC19</string>
+    <string name="label_add_circuit">Nuevo circuito</string>
+    <string name="action_add">Agregar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="empty_circuits">Aún no has agregado circuitos.\nAgrega el tuyo (por ejemplo AL53 o GC19) para recibir avisos cuando la Empresa Eléctrica lo mencione.</string>
+    <string name="snack_invalid_circuit">El circuito debe tener al menos 2 caracteres</string>
+    <string name="snack_duplicate_circuit">Ese circuito ya está en la lista</string>
+
+    <!-- Estado del servicio -->
+    <string name="status_active">La app revisa el canal cada 15 minutos en segundo plano.</string>
+    <string name="status_paused">Monitoreo pausado</string>
+    <string name="action_pause">Pausar</string>
+    <string name="action_resume">Reanudar</string>
+    <string name="last_check_never">Última revisión: todavía no se ha ejecutado</string>
+
+    <!-- Avisos -->
+    <string name="battery_optimization_title">Optimización de batería</string>
+    <string name="battery_optimization_body">Si las notificaciones llegan tarde, desactiva la optimización de batería para esta app. Android puede retrasar el trabajo en segundo plano hasta varias horas.</string>
+    <string name="battery_optimization_action">Configurar</string>
+    <string name="notif_permission_title">Permiso de notificaciones</string>
+    <string name="notif_permission_body">Necesitamos tu permiso para mostrarte avisos cuando mencionen tus circuitos.</string>
+    <string name="notif_permission_action">Conceder</string>
+
+    <!-- Nacional / parte SEN -->
+    <string name="national_report_label">Parte nacional del SEN</string>
+    <string name="switch_national">Notificarme también el parte nacional ("Situación del SEN")</string>
+
+    <!-- Notificaciones -->
+    <string name="notif_channel_name">Apagones</string>
+    <string name="notif_channel_desc">Avisos cuando la Empresa Eléctrica menciona tus circuitos</string>
+    <string name="notif_title_circuit">⚡ Apagón mencionado: %1$s</string>
+    <string name="notif_title_national">📢 Parte nacional del SEN</string>
+</resources>
