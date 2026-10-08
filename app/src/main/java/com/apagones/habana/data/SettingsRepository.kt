@@ -21,6 +21,12 @@ import kotlinx.coroutines.flow.map
  */
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "apagones_prefs")
 
+/** Información del estado actual y timestamp de cambio de un circuito. */
+data class CircuitStatusInfo(
+    val isAffected: Boolean,
+    val timestamp: Long
+)
+
 /** Estado observable que consume la interfaz. */
 data class AppSettings(
     /** Circuitos que el usuario monitorea, en mayúsculas (ej: ["AL53", "GC19"]). */
@@ -41,8 +47,12 @@ data class AppSettings(
     val affectedCircuits: Set<String> = emptySet(),
     /** Circuitos que han recibido al menos un reporte desde que fueron agregados. */
     val knownCircuits: Set<String> = emptySet(),
-    /** true si ya se mostró el onboarding/tutorial inicial. */
-    val firstRunCompleted: Boolean = false
+    /** true si ya se completó el onboarding/tutorial inicial. */
+    val onboardingCompleted: Boolean = false,
+    /** Indica si los ajustes ya fueron cargados desde DataStore. */
+    val isLoaded: Boolean = false,
+    /** Mapa de estado y timestamp de cada circuito. */
+    val circuitStatuses: Map<String, CircuitStatusInfo> = emptyMap()
 )
 
 /**
@@ -61,7 +71,8 @@ class SettingsRepository(private val context: Context) {
         val NOTIFICATION_HISTORY = stringSetPreferencesKey("notification_history")
         val AFFECTED_CIRCUITS = stringSetPreferencesKey("affected_circuits")
         val KNOWN_CIRCUITS = stringSetPreferencesKey("known_circuits")
-        val FIRST_RUN_COMPLETED = booleanPreferencesKey("first_run_completed")
+        val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+        val CIRCUIT_STATUS_MAP = stringSetPreferencesKey("circuit_status_map")
     }
 
     /** Flujo reactivo con toda la configuración (la UI lo observa). */
@@ -71,6 +82,17 @@ class SettingsRepository(private val context: Context) {
             .sortedByDescending { it.timestamp }
         val affectedSet = prefs[Keys.AFFECTED_CIRCUITS] ?: emptySet()
         val knownSet = prefs[Keys.KNOWN_CIRCUITS] ?: emptySet()
+
+        val statusMap = mutableMapOf<String, CircuitStatusInfo>()
+        for (item in prefs[Keys.CIRCUIT_STATUS_MAP] ?: emptySet()) {
+            val parts = item.split("|")
+            if (parts.size == 3) {
+                val circuit = parts[0]
+                val time = parts[1].toLongOrNull() ?: 0L
+                val affected = parts[2].toBoolean()
+                statusMap[circuit] = CircuitStatusInfo(affected, time)
+            }
+        }
 
         AppSettings(
             circuits = prefs[Keys.CIRCUITS]?.sorted() ?: emptyList(),
@@ -82,7 +104,9 @@ class SettingsRepository(private val context: Context) {
             notifications = notifList,
             affectedCircuits = affectedSet,
             knownCircuits = knownSet,
-            firstRunCompleted = prefs[Keys.FIRST_RUN_COMPLETED] ?: false
+            onboardingCompleted = prefs[Keys.ONBOARDING_COMPLETED] ?: false,
+            isLoaded = true,
+            circuitStatuses = statusMap
         )
     }
 
@@ -95,6 +119,17 @@ class SettingsRepository(private val context: Context) {
         val affectedSet = prefs[Keys.AFFECTED_CIRCUITS] ?: emptySet()
         val knownSet = prefs[Keys.KNOWN_CIRCUITS] ?: emptySet()
 
+        val statusMap = mutableMapOf<String, CircuitStatusInfo>()
+        for (item in prefs[Keys.CIRCUIT_STATUS_MAP] ?: emptySet()) {
+            val parts = item.split("|")
+            if (parts.size == 3) {
+                val circuit = parts[0]
+                val time = parts[1].toLongOrNull() ?: 0L
+                val affected = parts[2].toBoolean()
+                statusMap[circuit] = CircuitStatusInfo(affected, time)
+            }
+        }
+
         return AppSettings(
             circuits = prefs[Keys.CIRCUITS]?.sorted() ?: emptyList(),
             lastSeenPostId = prefs[Keys.LAST_SEEN_ID] ?: 0L,
@@ -105,7 +140,9 @@ class SettingsRepository(private val context: Context) {
             notifications = notifList,
             affectedCircuits = affectedSet,
             knownCircuits = knownSet,
-            firstRunCompleted = prefs[Keys.FIRST_RUN_COMPLETED] ?: false
+            onboardingCompleted = prefs[Keys.ONBOARDING_COMPLETED] ?: false,
+            isLoaded = true,
+            circuitStatuses = statusMap
         )
     }
 
@@ -140,6 +177,10 @@ class SettingsRepository(private val context: Context) {
             if (known.contains(normalized)) {
                 prefs[Keys.KNOWN_CIRCUITS] = HashSet(known - normalized)
             }
+
+            val statusMap = prefs[Keys.CIRCUIT_STATUS_MAP] ?: emptySet()
+            val updatedMap = statusMap.filter { !it.startsWith("$normalized|") }.toSet()
+            prefs[Keys.CIRCUIT_STATUS_MAP] = updatedMap
         }
     }
 
@@ -171,19 +212,19 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { prefs -> prefs[Keys.SHOW_PERSISTENT_NOTIF] = enabled }
     }
 
-    /** Marca si ya se mostró el onboarding/tutorial de bienvenida. */
-    suspend fun setFirstRunCompleted(completed: Boolean) {
-        context.dataStore.edit { prefs -> prefs[Keys.FIRST_RUN_COMPLETED] = completed }
+    /** Marca si ya se completó el onboarding/tutorial de bienvenida. */
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        context.dataStore.edit { prefs -> prefs[Keys.ONBOARDING_COMPLETED] = completed }
     }
 
-    /** Agrega un aviso al historial (máximo 50). */
+    /** Agrega un aviso al historial (máximo 200). */
     suspend fun addNotification(notification: AppNotification) {
         context.dataStore.edit { prefs ->
             val current = prefs[Keys.NOTIFICATION_HISTORY] ?: emptySet()
             val updated = mutableSetOf(notification.toJson())
             val parsed = current.mapNotNull { AppNotification.fromJson(it) }
                 .sortedByDescending { it.timestamp }
-                .take(49)
+                .take(199)
             for (item in parsed) {
                 updated.add(item.toJson())
             }
@@ -198,19 +239,43 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    /** Marca o desmarca circuitos como afectados según los reportes. */
-    suspend fun setCircuitsAffected(circuits: List<String>, affected: Boolean) {
+    /**
+     * Marca o desmarca circuitos como afectados según los reportes.
+     * Si un circuito es mencionado nuevamente (incluso si reitera el mismo estado),
+     * actualiza su información y su timestamp con el de la notificación más reciente.
+     */
+    suspend fun setCircuitsAffected(circuits: List<String>, affected: Boolean, timestamp: Long = System.currentTimeMillis()) {
         if (circuits.isEmpty()) return
+        val now = timestamp
         context.dataStore.edit { prefs ->
-            val current = prefs[Keys.AFFECTED_CIRCUITS] ?: emptySet()
-            val updated = HashSet(current)
+            val currentAffected = prefs[Keys.AFFECTED_CIRCUITS] ?: emptySet()
+            val updatedAffected = HashSet(currentAffected)
             val normalized = circuits.map { normalizeCircuit(it) }
+
             if (affected) {
-                updated.addAll(normalized)
+                updatedAffected.addAll(normalized)
             } else {
-                updated.removeAll(normalized)
+                updatedAffected.removeAll(normalized)
             }
-            prefs[Keys.AFFECTED_CIRCUITS] = updated
+            prefs[Keys.AFFECTED_CIRCUITS] = updatedAffected
+
+            // Actualizar mapa de estado con timestamp de la notificación más reciente
+            val currentMapSet = prefs[Keys.CIRCUIT_STATUS_MAP] ?: emptySet()
+            val map = currentMapSet.associate { item ->
+                val parts = item.split("|")
+                val circuit = if (parts.isNotEmpty()) parts[0] else ""
+                val time = if (parts.size >= 2) parts[1].toLongOrNull() ?: now else now
+                val isEff = if (parts.size >= 3) parts[2].toBoolean() else false
+                circuit to Pair(isEff, time)
+            }.toMutableMap()
+
+            for (c in normalized) {
+                // Actualiza siempre el estado y el timestamp con la notificación más reciente (sea cambio o repetición)
+                map[c] = Pair(affected, now)
+            }
+
+            val newMapSet = map.map { "${it.key}|${it.value.second}|${it.value.first}" }.toSet()
+            prefs[Keys.CIRCUIT_STATUS_MAP] = newMapSet
         }
     }
 

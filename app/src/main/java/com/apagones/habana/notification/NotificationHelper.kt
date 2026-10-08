@@ -85,25 +85,26 @@ object NotificationHelper {
     }
 
     /**
-     * Publica una notificación local con el texto del aviso.
+     * Publica una notificación local con el texto del aviso y el timestamp del mensaje de Telegram.
      */
     fun showNotification(
         context: Context,
         title: String,
         text: String,
         postUrl: String,
-        notifId: Int
+        notifId: Int,
+        timestamp: Long = System.currentTimeMillis()
     ) {
         if (!havePermission(context)) return
 
-        val viewIntent = Intent(Intent.ACTION_VIEW, Uri.parse(postUrl)).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        val appIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
         val pendingIntent = PendingIntent.getActivity(
             context,
             notifId,
-            viewIntent,
+            appIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -115,6 +116,8 @@ object NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
+            .setShowWhen(true)
+            .setWhen(timestamp)
             .setContentIntent(pendingIntent)
             .build()
 

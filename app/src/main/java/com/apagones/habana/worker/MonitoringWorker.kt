@@ -97,10 +97,10 @@ class MonitoringWorker(
             val restoredList = circuitStatuses.filter { it.value == MentionMatcher.StatusType.RESTORED }.keys.toList()
 
             if (affectedList.isNotEmpty()) {
-                repo.setCircuitsAffected(affectedList, true)
+                repo.setCircuitsAffected(affectedList, true, post.timestamp)
             }
             if (restoredList.isNotEmpty()) {
-                repo.setCircuitsAffected(restoredList, false)
+                repo.setCircuitsAffected(restoredList, false, post.timestamp)
             }
         }
 
@@ -112,7 +112,8 @@ class MonitoringWorker(
                 text = post.text,
                 postUrl = post.urlPost,
                 // Id único por post y circuito (evita que dos avisos se pisen)
-                notifId = (post.idPost % 100_000).toInt() * 10 + index
+                notifId = (post.idPost % 100_000).toInt() * 10 + index,
+                timestamp = post.timestamp
             )
             repo.addNotification(
                 AppNotification(
@@ -120,7 +121,7 @@ class MonitoringWorker(
                     title = title,
                     text = post.text,
                     postUrl = post.urlPost,
-                    timestamp = System.currentTimeMillis()
+                    timestamp = post.timestamp
                 )
             )
         }
@@ -133,7 +134,8 @@ class MonitoringWorker(
                 title = title,
                 text = post.text,
                 postUrl = post.urlPost,
-                notifId = (post.idPost % 100_000).toInt() * 10 + 9
+                notifId = (post.idPost % 100_000).toInt() * 10 + 9,
+                timestamp = post.timestamp
             )
             repo.addNotification(
                 AppNotification(
@@ -141,7 +143,7 @@ class MonitoringWorker(
                     title = title,
                     text = post.text,
                     postUrl = post.urlPost,
-                    timestamp = System.currentTimeMillis()
+                    timestamp = post.timestamp
                 )
             )
         }

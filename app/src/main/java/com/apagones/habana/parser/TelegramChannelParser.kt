@@ -4,6 +4,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import java.time.LocalDateTime
+import java.time.OffsetDateTime
+import java.time.ZoneId
 
 /**
  * Parser AISLADO del canal público de Telegram vista web:
@@ -70,11 +73,37 @@ class TelegramChannelParser(
         val text = htmlToPlainText(textEl.html())
         if (text.isBlank()) return null
 
+        // Extraer la fecha/hora del elemento <time> con atributo datetime (vista web de Telegram)
+        val timeEl = wrap.selectFirst("time.tgme_widget_message_date, time")
+        val datetimeAttr = timeEl?.attr("datetime").orEmpty()
+        val timestamp = parseDatetime(datetimeAttr)
+
         return TelegramPost(
             idPost = id,
             text = text,
-            urlPost = "https://t.me/$channelUsername/$id"
+            urlPost = "https://t.me/$channelUsername/$id",
+            timestamp = timestamp
         )
+    }
+
+    /**
+     * Parsea el atributo datetime (ISO 8601) a milisegundos epoch.
+     * Si no trae fecha o falla el parseo, utiliza la hora actual como fallback.
+     * Soporta la zona horaria America/Havana.
+     */
+    private fun parseDatetime(datetimeAttr: String): Long {
+        if (datetimeAttr.isBlank()) return System.currentTimeMillis()
+        return try {
+            val odt = OffsetDateTime.parse(datetimeAttr)
+            odt.toInstant().toEpochMilli()
+        } catch (_: Exception) {
+            try {
+                val ldt = LocalDateTime.parse(datetimeAttr)
+                ldt.atZone(ZoneId.of("America/Havana")).toInstant().toEpochMilli()
+            } catch (_: Exception) {
+                System.currentTimeMillis()
+            }
+        }
     }
 
     /**

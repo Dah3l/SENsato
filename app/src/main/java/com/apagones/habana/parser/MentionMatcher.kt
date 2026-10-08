@@ -1,8 +1,8 @@
 package com.apagones.habana.parser
 
 /**
- * Lógica pura de detección de menciones y estados con prioridad para emojis de restablecimiento (✅)
- * acompañados de palabras clave de recuperación.
+ * Lógica pura de detección de menciones y estados.
+ * Los emojis ✅, 🟢 o ☑️ por sí solos bastan para catalogar un mensaje como restablecido.
  */
 object MentionMatcher {
 
@@ -31,6 +31,13 @@ object MentionMatcher {
     fun detectCircuitStatuses(text: String, circuits: List<String>): Map<String, StatusType> {
         if (circuits.isEmpty() || text.isBlank()) return emptyMap()
 
+        // Si el texto contiene "Actualización de afectaciones" (con o sin tilde, insensible a mayúsculas),
+        // trátalo como puramente informativo y no detectes ningún cambio de estado en él.
+        if (text.contains("Actualización de afectaciones", ignoreCase = true) ||
+            text.contains("Actualizacion de afectaciones", ignoreCase = true)) {
+            return emptyMap()
+        }
+
         val paragraphs = text.split(Regex("\n+"))
         val globalStatus = detectGlobalStatus(text)
         val result = mutableMapOf<String, StatusType>()
@@ -56,13 +63,28 @@ object MentionMatcher {
 
     /**
      * Detecta el estado global (Restored o Affected) en un bloque de texto.
-     * Da prioridad absoluta a los emojis de restablecimiento (🟢, ☑️, ✅) si además
-     * van acompañados de al menos una palabra clave de restablecimiento.
+     * Regla principal: Los emojis ✅, 🟢 o ☑️ bastan por sí solos para catalogarlo como RESTORED.
      */
     fun detectGlobalStatus(text: String): StatusType? {
+        // Si el texto contiene "Actualización de afectaciones" (con o sin tilde, insensible a mayúsculas),
+        // trátalo como puramente informativo y no detectes ningún estado.
+        if (text.contains("Actualización de afectaciones", ignoreCase = true) ||
+            text.contains("Actualizacion de afectaciones", ignoreCase = true)) {
+            return null
+        }
+
         val lower = text.lowercase()
 
-        // Palabras clave definitivas de restablecimiento
+        // 1. Si contiene cualquiera de los emojis de restablecimiento (✅, 🟢, ☑️), basta por sí solo.
+        val hasRestoredEmoji = text.contains("🟢") || text.contains("☑️") || text.contains("✅")
+        if (hasRestoredEmoji) {
+            return StatusType.RESTORED
+        }
+
+        val hasAffectedEmoji = text.contains("🚨") || text.contains("‼️") || text.contains("🚧") || text.contains("📉") || text.contains("🛑")
+        if (hasAffectedEmoji) return StatusType.AFFECTED
+
+        // 2. Palabras clave definitivas de restablecimiento
         val restoredKeywords = listOf(
             "queda restablecido", "queda restablecio",
             "servicio restablecido", "servicio reestablecido",
@@ -75,20 +97,7 @@ object MentionMatcher {
             "energizado", "circuito energizado"
         )
 
-        // Verificación de emojis
-        val hasRestoredEmoji = text.contains("🟢") || text.contains("☑️") || text.contains("✅")
-        val hasAffectedEmoji = text.contains("🚨") || text.contains("‼️") || text.contains("🚧") || text.contains("📉") || text.contains("🛑")
-
-        // Regla prioritaria: Si hay emoji de restablecimiento Y al menos una palabra clave de restablecimiento,
-        // es un mensaje operativo (incluso si también trae un emoji como 📉 por DAF).
-        val containsRestoredKeyword = restoredKeywords.any { lower.contains(it) }
-        if (hasRestoredEmoji && containsRestoredKeyword) {
-            return StatusType.RESTORED
-        }
-
-        if (hasAffectedEmoji && !hasRestoredEmoji) return StatusType.AFFECTED
-
-        // Palabras clave definitivas de afectación
+        // 3. Palabras clave definitivas de afectación
         val affectedKeywords = listOf(
             "se afectó", "se afecto",
             "afectado", "afectados",

@@ -3,9 +3,13 @@ package com.apagones.habana.ui.screen
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.apagones.habana.data.AppSettings
+import com.apagones.habana.data.AppNotification
 import com.apagones.habana.data.SettingsRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -22,6 +26,34 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = AppSettings()
         )
+
+    // --- Búsqueda y filtrado de notificaciones en tiempo real ---
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    /** Actualiza el texto de búsqueda ingresado por el usuario. */
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    /** Lista filtrada de notificaciones según el término de búsqueda en el título (ej. código de circuito), de forma insensible a mayúsculas y con coincidencia parcial. */
+    val filteredNotifications: StateFlow<List<AppNotification>> = combine(
+        settings,
+        _searchQuery
+    ) { appSettings, query ->
+        if (query.isBlank()) {
+            appSettings.notifications
+        } else {
+            val q = query.trim().lowercase()
+            appSettings.notifications.filter { notif ->
+                notif.title.lowercase().contains(q)
+            }
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList()
+    )
 
     /** Agrega un circuito normalizado; notifica el resultado por callbacks. */
     fun addCircuit(
@@ -59,9 +91,9 @@ class MainViewModel(private val repo: SettingsRepository) : ViewModel() {
         viewModelScope.launch { repo.clearNotifications() }
     }
 
-    /** Marca si ya se mostró el onboarding. */
-    fun setFirstRunCompleted(completed: Boolean) {
-        viewModelScope.launch { repo.setFirstRunCompleted(completed) }
+    /** Marca si ya se completó el onboarding. */
+    fun setOnboardingCompleted(completed: Boolean) {
+        viewModelScope.launch { repo.setOnboardingCompleted(completed) }
     }
 }
 

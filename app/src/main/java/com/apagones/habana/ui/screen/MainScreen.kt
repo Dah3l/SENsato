@@ -26,7 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
@@ -70,11 +70,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.apagones.habana.R
 import com.apagones.habana.data.AppNotification
 import com.apagones.habana.data.AppSettings
+import com.apagones.habana.data.CircuitStatusInfo
 import com.apagones.habana.data.SettingsRepository
 import com.apagones.habana.notification.NotificationHelper
 import kotlinx.coroutines.launch
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Pantalla principal con 3 pestañas (Monitoreo, Historial y Preferencias) y gestión de circuitos.
@@ -84,6 +88,8 @@ import java.util.Date
 fun MainScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val filteredNotifications by viewModel.filteredNotifications.collectAsStateWithLifecycle()
 
     var newText by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -108,9 +114,9 @@ fun MainScreen(viewModel: MainViewModel) {
         }
     }
 
-    // Mostrar onboarding automáticamente la primera vez
-    LaunchedEffect(settings.firstRunCompleted) {
-        if (!settings.firstRunCompleted) {
+    // Mostrar onboarding automáticamente la primera vez solo cuando DataStore haya cargado
+    LaunchedEffect(settings.isLoaded, settings.onboardingCompleted) {
+        if (settings.isLoaded && !settings.onboardingCompleted) {
             showOnboarding = true
         }
     }
@@ -124,8 +130,8 @@ fun MainScreen(viewModel: MainViewModel) {
         OnboardingDialog(
             onDismiss = {
                 showOnboarding = false
-                if (!settings.firstRunCompleted) {
-                    viewModel.setFirstRunCompleted(true)
+                if (!settings.onboardingCompleted) {
+                    viewModel.setOnboardingCompleted(true)
                 }
             }
         )
@@ -137,9 +143,10 @@ fun MainScreen(viewModel: MainViewModel) {
                 TopAppBar(
                     title = { Text(stringResource(R.string.app_name)) },
                     actions = {
+                        // Botón de ayuda (?) en la pantalla principal para mostrar el onboarding bajo demanda
                         IconButton(onClick = { showOnboarding = true }) {
                             Icon(
-                                imageVector = Icons.Default.Info,
+                                imageVector = Icons.AutoMirrored.Filled.Help,
                                 contentDescription = stringResource(R.string.onboarding_help_cd)
                             )
                         }
@@ -204,6 +211,9 @@ fun MainScreen(viewModel: MainViewModel) {
             1 -> HistoryTab(
                 paddingValues = paddingValues,
                 settings = settings,
+                searchQuery = searchQuery,
+                filteredNotifications = filteredNotifications,
+                onSearchQueryChanged = { viewModel.setSearchQuery(it) },
                 onClearHistory = { viewModel.clearNotifications() }
             )
             2 -> PreferencesTab(
@@ -398,11 +408,13 @@ private fun MonitoringTab(
                 val normalized = SettingsRepository.normalizeCircuit(circuit)
                 val isKnown = settings.knownCircuits.contains(normalized)
                 val isAffected = settings.affectedCircuits.contains(normalized)
+                val statusInfo = settings.circuitStatuses[normalized]
 
                 CircuitRow(
                     circuit = circuit,
                     isKnown = isKnown,
                     isAffected = isAffected,
+                    statusInfo = statusInfo,
                     onDelete = { circuitToDelete = circuit }
                 )
             }
@@ -412,11 +424,14 @@ private fun MonitoringTab(
     }
 }
 
-/** Pestaña 1: Historial de avisos. */
+/** Pestaña 1: Historial de avisos con barra de búsqueda y filtrado en tiempo real. */
 @Composable
 private fun HistoryTab(
     paddingValues: PaddingValues,
     settings: AppSettings,
+    searchQuery: String,
+    filteredNotifications: List<AppNotification>,
+    onSearchQueryChanged: (String) -> Unit,
     onClearHistory: () -> Unit
 ) {
     var showClearDialog by remember { mutableStateOf(false) }
@@ -472,24 +487,57 @@ private fun HistoryTab(
             }
         }
 
-        if (settings.notifications.isEmpty()) {
+        // Barra de búsqueda Material 3 sobre la lista para filtrar en tiempo real (principalmente por circuito)
+        if (settings.notifications.isNotEmpty() || searchQuery.isNotBlank()) {
             item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = stringResource(R.string.empty_history),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChanged,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.history_search_hint)) },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium
+                )
+            }
+        }
+
+        when {
+            settings.notifications.isEmpty() -> {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.empty_history),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
-        } else {
-            items(settings.notifications, key = { it.id }) { notif ->
-                NotificationHistoryCard(notification = notif)
+            filteredNotifications.isEmpty() -> {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(R.string.history_no_search_results),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            else -> {
+                items(filteredNotifications, key = { it.id }) { notif ->
+                    NotificationHistoryCard(notification = notif)
+                }
             }
         }
 
@@ -580,30 +628,43 @@ private fun PreferencesTab(
     }
 }
 
-/** Fila de un circuito con indicador de estado (En espera, Afectado u Operativo) y botón de eliminar. */
+/** Fila de un circuito con indicador de estado (En espera, Afectado u Operativo) y tiempo transcurrido. */
 @Composable
 private fun CircuitRow(
     circuit: String,
     isKnown: Boolean,
     isAffected: Boolean,
+    statusInfo: CircuitStatusInfo?,
     onDelete: () -> Unit
 ) {
     val containerColor = when {
         !isKnown -> MaterialTheme.colorScheme.surfaceVariant
         isAffected -> MaterialTheme.colorScheme.errorContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
+        else -> MaterialTheme.colorScheme.primaryContainer
     }
 
-    val statusText = when {
+    val baseStatusText = when {
         !isKnown -> stringResource(R.string.circuit_status_waiting)
         isAffected -> stringResource(R.string.circuit_status_affected)
         else -> stringResource(R.string.circuit_status_normal)
     }
 
+    val timeAgo = if (isKnown && statusInfo != null) {
+        formatElapsedTime(statusInfo.timestamp)
+    } else {
+        ""
+    }
+
+    val statusText = if (timeAgo.isNotBlank() && isKnown) {
+        "$baseStatusText $timeAgo"
+    } else {
+        baseStatusText
+    }
+
     val statusColor = when {
         !isKnown -> MaterialTheme.colorScheme.onSurfaceVariant
         isAffected -> MaterialTheme.colorScheme.onErrorContainer
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
 
     Card(
@@ -637,6 +698,26 @@ private fun CircuitRow(
                 )
             }
         }
+    }
+}
+
+private fun formatElapsedTime(timestamp: Long): String {
+    if (timestamp <= 0L) return ""
+    val diffMillis = System.currentTimeMillis() - timestamp
+    if (diffMillis < 0) return ""
+    val minutes = diffMillis / (1000 * 60)
+    val hours = minutes / 60
+    val days = hours / 24
+
+    return when {
+        days > 0 -> "desde hace $days ${if (days == 1L) "día" else "días"}"
+        hours > 0 -> {
+            val remMins = minutes % 60
+            if (remMins > 0) "desde hace $hours ${if (hours == 1L) "hora" else "horas"} y $remMins min"
+            else "desde hace $hours ${if (hours == 1L) "hora" else "horas"}"
+        }
+        minutes > 0 -> "desde hace $minutes ${if (minutes == 1L) "minuto" else "minutos"}"
+        else -> "hace un momento"
     }
 }
 
@@ -771,8 +852,13 @@ private fun WarningBlock(
 @Composable
 private fun NotificationHistoryCard(notification: AppNotification) {
     val context = LocalContext.current
-    val timeFormatted = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-        .format(Date(notification.timestamp))
+    // Formatear la fecha y hora usando la zona horaria America/Havana
+    val timeFormatted = remember(notification.timestamp) {
+        val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("America/Havana")
+        }
+        sdf.format(Date(notification.timestamp))
+    }
     var expanded by remember { mutableStateOf(false) }
 
     Card(
