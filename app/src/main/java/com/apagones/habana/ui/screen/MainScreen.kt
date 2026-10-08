@@ -79,6 +79,7 @@ import com.apagones.habana.data.AppSettings
 import com.apagones.habana.data.CircuitStatusInfo
 import com.apagones.habana.data.SettingsRepository
 import com.apagones.habana.notification.NotificationHelper
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.text.SimpleDateFormat
@@ -242,13 +243,15 @@ private fun OnboardingDialog(
         stringResource(R.string.onboarding_title_1),
         stringResource(R.string.onboarding_title_2),
         stringResource(R.string.onboarding_title_3),
-        stringResource(R.string.onboarding_title_4)
+        stringResource(R.string.onboarding_title_4),
+        stringResource(R.string.onboarding_title_5)
     )
     val descriptions = listOf(
         stringResource(R.string.onboarding_desc_1),
         stringResource(R.string.onboarding_desc_2),
         stringResource(R.string.onboarding_desc_3),
-        stringResource(R.string.onboarding_desc_4)
+        stringResource(R.string.onboarding_desc_4),
+        stringResource(R.string.onboarding_desc_5)
     )
 
     // Obtener dimensiones del viewport para un tamaño fijo proporcional (sin hardcodear altura reducida)
@@ -397,6 +400,16 @@ private fun MonitoringTab(
     // Diálogo de estadísticas de la última semana para el circuito seleccionado con tamaño fijo basado en viewport
     if (selectedCircuitForStats != null) {
         val circuit = selectedCircuitForStats!!
+
+        // Estado para actualizar el tiempo en curso en tiempo real cada 30 segundos si hay afectaciones en curso
+        var currentTime by remember { mutableStateOf(System.currentTimeMillis()) }
+        LaunchedEffect(selectedCircuitForStats) {
+            while (true) {
+                delay(30_000L)
+                currentTime = System.currentTimeMillis()
+            }
+        }
+
         val stats = remember(circuit, settings.notifications) {
             calculateCircuitStats(circuit, settings.notifications)
         }
@@ -541,7 +554,7 @@ private fun MonitoringTab(
                                         Spacer(Modifier.width(8.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = formatUnifiedInterval(interval),
+                                                text = formatUnifiedInterval(interval, currentTime),
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Medium,
                                                 color = MaterialTheme.colorScheme.onSurface
@@ -1328,12 +1341,20 @@ data class UnifiedInterval(
     val isAffected: Boolean // true = sin servicio (🔴), false = operativo (🟢)
 )
 
-/** Formatea un intervalo unificado con fecha y hora en la zona horaria America/Havana. */
-private fun formatUnifiedInterval(interval: UnifiedInterval): String {
+/** Formatea un intervalo unificado con fecha, hora y duración en la zona horaria America/Havana (en tiempo real si sigue en curso). */
+private fun formatUnifiedInterval(interval: UnifiedInterval, now: Long): String {
     val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).apply {
         timeZone = TimeZone.getTimeZone("America/Havana")
     }
     val startStr = sdf.format(Date(interval.startMillis))
     val endStr = if (interval.isOngoing) "Actualidad" else sdf.format(Date(interval.endMillis))
-    return "$startStr → $endStr"
+
+    val durationMillis = if (interval.isOngoing) {
+        (now - interval.startMillis).coerceAtLeast(0L)
+    } else {
+        (interval.endMillis - interval.startMillis).coerceAtLeast(0L)
+    }
+    val durationStr = formatDuration(durationMillis)
+
+    return "$startStr → $endStr ($durationStr)"
 }

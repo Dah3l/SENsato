@@ -74,13 +74,15 @@
 
     <!-- Onboarding / Tutorial -->
     <string name="onboarding_title_1">¡Bienvenido a Mi Circuito!</string>
-    <string name="onboarding_desc_1">Tu aplicación para monitorear el estado del servicio eléctrico en tiempo real directamente desde los reportes oficiales de Telegram.</string>
+    <string name="onboarding_desc_1">Monitorea el estado del servicio eléctrico desde los reportes oficiales del canal de Telegram de la Empresa Eléctrica. Nota importante: Todo depende de las publicaciones del canal oficial, por lo que la información puede no ser 100% verídica.</string>
     <string name="onboarding_title_2">1. Agrega tus circuitos</string>
-    <string name="onboarding_desc_2">Añade los códigos de tus circuitos (ej: AL53, GC19) en la pestaña Monitoreo para empezar a recibirlos.</string>
+    <string name="onboarding_desc_2">Añade los códigos de tus circuitos de interés (ej: AL53, GC19) en la pestaña Monitoreo para empezar a recibir alertas personalizadas.</string>
     <string name="onboarding_title_3">2. Estados en tiempo real</string>
-    <string name="onboarding_desc_3">Sabrás al instante si tu circuito está en Espera, Operativo 🟢 o Afectado 🔴 según los mensajes analizados automáticamente.</string>
-    <string name="onboarding_title_4">3. Monitoreo constante</string>
-    <string name="onboarding_desc_4">La app escanea cada 2 minutos en segundo plano con una notificación permanente en la barra de tareas y un historial completo.</string>
+    <string name="onboarding_desc_3">La app analiza automáticamente los mensajes para indicarte si tu circuito está en Espera, Operativo 🟢 o con Afectación 🔴 en tiempo real.</string>
+    <string name="onboarding_title_4">3. Monitoreo y notificaciones</string>
+    <string name="onboarding_desc_4">Escaneo automático cada 2 minutos en segundo plano con notificación permanente de estado y cuenta regresiva al próximo chequeo.</string>
+    <string name="onboarding_title_5">4. Historial y estadísticas</string>
+    <string name="onboarding_desc_5">Consulta el historial con búsqueda en tiempo real y pulsa sobre cualquier circuito para ver sus estadísticas detalladas de los últimos 7 días con fechas y duraciones en vivo.</string>
     <string name="onboarding_next">Siguiente</string>
     <string name="onboarding_prev">Anterior</string>
     <string name="onboarding_finish">Entendido</string>
