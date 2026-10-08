@@ -65,7 +65,7 @@
 
     <!-- Diálogos de confirmación -->
     <string name="dialog_delete_circuit_title">Eliminar circuito</string>
-    <string name="dialog_delete_circuit_msg">¿Estás seguro de que deseas eliminar el circuito %1$s de la lista de monitoreo?</string>
+    <string name="dialog_delete_circuit_msg">¿Estás seguro de que deseas eliminar el circuito %1$s?\n\nAl eliminarlo se perderá toda la información, su estado y el historial de avisos relacionados con este circuito.</string>
     <string name="dialog_clear_history_title">Limpiar historial</string>
     <string name="dialog_clear_history_msg">¿Estás seguro de que deseas borrar todo el historial de avisos?</string>
     <string name="dialog_cancel">Cancelar</string>

@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.apagones.habana.parser.MentionMatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -161,7 +162,7 @@ class SettingsRepository(private val context: Context) {
         return added
     }
 
-    /** Elimina un circuito de la lista. */
+    /** Elimina un circuito de la lista y toda la información relacionada (estados, estadísticas e historial de notificaciones). */
     suspend fun removeCircuit(circuit: String) {
         val normalized = normalizeCircuit(circuit)
         context.dataStore.edit { prefs ->
@@ -181,6 +182,18 @@ class SettingsRepository(private val context: Context) {
             val statusMap = prefs[Keys.CIRCUIT_STATUS_MAP] ?: emptySet()
             val updatedMap = statusMap.filter { !it.startsWith("$normalized|") }.toSet()
             prefs[Keys.CIRCUIT_STATUS_MAP] = updatedMap
+
+            // Eliminar todas las notificaciones del historial que mencionen este circuito
+            val notifSet = prefs[Keys.NOTIFICATION_HISTORY] ?: emptySet()
+            val filteredNotifs = notifSet.mapNotNull { AppNotification.fromJson(it) }
+                .filter { notif ->
+                    val textMatched = MentionMatcher.findMatchingCircuits(notif.text, listOf(normalized)).isNotEmpty()
+                    val titleMatched = MentionMatcher.findMatchingCircuits(notif.title, listOf(normalized)).isNotEmpty() ||
+                        notif.title.contains(normalized, ignoreCase = true)
+                    // Conservar únicamente las notificaciones que no estén relacionadas con este circuito
+                    !textMatched && !titleMatched
+                }
+            prefs[Keys.NOTIFICATION_HISTORY] = filteredNotifs.map { it.toJson() }.toSet()
         }
     }
 
