@@ -88,13 +88,13 @@ class MonitoringWorker(
     ) {
         // a) Menciones exactas de circuitos del usuario
         val matched = MentionMatcher.findMatchingCircuits(post.text, circuits)
-        if (matched.isNotEmpty()) {
+        val circuitStatuses = if (matched.isNotEmpty()) {
             repo.markCircuitsKnown(matched)
 
             // Análisis avanzado por proximidad de párrafos (soporta posts con múltiples estados)
-            val circuitStatuses = MentionMatcher.detectCircuitStatuses(post.text, matched)
-            val affectedList = circuitStatuses.filter { it.value == MentionMatcher.StatusType.AFFECTED }.keys.toList()
-            val restoredList = circuitStatuses.filter { it.value == MentionMatcher.StatusType.RESTORED }.keys.toList()
+            val statuses = MentionMatcher.detectCircuitStatuses(post.text, matched)
+            val affectedList = statuses.filter { it.value == MentionMatcher.StatusType.AFFECTED }.keys.toList()
+            val restoredList = statuses.filter { it.value == MentionMatcher.StatusType.RESTORED }.keys.toList()
 
             if (affectedList.isNotEmpty()) {
                 repo.setCircuitsAffected(affectedList, true, post.timestamp)
@@ -102,10 +102,19 @@ class MonitoringWorker(
             if (restoredList.isNotEmpty()) {
                 repo.setCircuitsAffected(restoredList, false, post.timestamp)
             }
+            statuses
+        } else {
+            emptyMap()
         }
 
         for ((index, circuit) in matched.withIndex()) {
-            val title = context.getString(R.string.notif_title_circuit, circuit)
+            val statusType = circuitStatuses[circuit.uppercase()]
+            // Generar título descriptivo según el estado detectado para ese circuito en particular
+            val title = when (statusType) {
+                MentionMatcher.StatusType.AFFECTED -> context.getString(R.string.notif_title_affected, circuit)
+                MentionMatcher.StatusType.RESTORED -> context.getString(R.string.notif_title_restored, circuit)
+                else -> context.getString(R.string.notif_title_circuit, circuit)
+            }
             NotificationHelper.showNotification(
                 context = context,
                 title = title,

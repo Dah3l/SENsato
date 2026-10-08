@@ -35,6 +35,8 @@
     <string name="notif_channel_name">Mi Circuito</string>
     <string name="notif_channel_desc">Avisos cuando la Empresa Eléctrica menciona tus circuitos</string>
     <string name="notif_title_circuit">⚡ Circuito mencionado: %1$s</string>
+    <string name="notif_title_affected">🔴 Circuito afectado: %1$s</string>
+    <string name="notif_title_restored">🟢 Circuito restablecido: %1$s</string>
     <string name="notif_title_national">📢 Parte nacional del SEN</string>
 
     <!-- Canal de notificación permanente -->

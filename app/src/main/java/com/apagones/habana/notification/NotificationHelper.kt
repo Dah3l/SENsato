@@ -99,6 +99,7 @@ object NotificationHelper {
 
         val appIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("OPEN_TAB", 1) // Abrir la aplicación Mi Circuito en la pestaña de Historial
         }
 
         val pendingIntent = PendingIntent.getActivity(

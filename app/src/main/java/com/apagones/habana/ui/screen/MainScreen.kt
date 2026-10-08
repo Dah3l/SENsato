@@ -92,7 +92,7 @@ import java.util.TimeZone
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(viewModel: MainViewModel) {
+fun MainScreen(viewModel: MainViewModel, initialTab: Int = 0) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -101,8 +101,12 @@ fun MainScreen(viewModel: MainViewModel) {
     var newText by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
-    var selectedTab by remember { mutableStateOf(0) }
+    var selectedTab by remember { mutableStateOf(initialTab) }
     var showOnboarding by remember { mutableStateOf(false) }
+
+    LaunchedEffect(initialTab) {
+        selectedTab = initialTab
+    }
 
     // ------ Permiso de notificaciones (Android 13+) ------
     var notificationsGranted by remember { mutableStateOf(true) }

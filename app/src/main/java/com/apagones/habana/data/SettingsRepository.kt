@@ -162,7 +162,7 @@ class SettingsRepository(private val context: Context) {
         return added
     }
 
-    /** Elimina un circuito de la lista y toda la información relacionada (estados, estadísticas e historial de notificaciones). */
+    /** Elimina un circuito de la lista y única y exclusivamente las notificaciones asignadas a este (por su título). */
     suspend fun removeCircuit(circuit: String) {
         val normalized = normalizeCircuit(circuit)
         context.dataStore.edit { prefs ->
@@ -183,15 +183,14 @@ class SettingsRepository(private val context: Context) {
             val updatedMap = statusMap.filter { !it.startsWith("$normalized|") }.toSet()
             prefs[Keys.CIRCUIT_STATUS_MAP] = updatedMap
 
-            // Eliminar todas las notificaciones del historial que mencionen este circuito
+            // Eliminar ÚNICA Y EXCLUSIVAMENTE las notificaciones asignadas a este circuito (comprobando su título).
+            // No eliminamos las notificaciones asignadas a otros circuitos aunque el texto del cuerpo mencione ambos.
             val notifSet = prefs[Keys.NOTIFICATION_HISTORY] ?: emptySet()
             val filteredNotifs = notifSet.mapNotNull { AppNotification.fromJson(it) }
                 .filter { notif ->
-                    val textMatched = MentionMatcher.findMatchingCircuits(notif.text, listOf(normalized)).isNotEmpty()
-                    val titleMatched = MentionMatcher.findMatchingCircuits(notif.title, listOf(normalized)).isNotEmpty() ||
+                    val isAssignedToThisCircuit = MentionMatcher.findMatchingCircuits(notif.title, listOf(normalized)).isNotEmpty() ||
                         notif.title.contains(normalized, ignoreCase = true)
-                    // Conservar únicamente las notificaciones que no estén relacionadas con este circuito
-                    !textMatched && !titleMatched
+                    !isAssignedToThisCircuit
                 }
             prefs[Keys.NOTIFICATION_HISTORY] = filteredNotifs.map { it.toJson() }.toSet()
         }
