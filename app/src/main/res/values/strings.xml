@@ -89,4 +89,14 @@
     <!-- Búsqueda en historial -->
     <string name="history_search_hint">Buscar por código de circuito (ej: AL53)…</string>
     <string name="history_no_search_results">No se encontraron avisos que coincidan con la búsqueda.</string>
+
+    <!-- Estadísticas de 7 días por circuito -->
+    <string name="stats_dialog_title">Estadísticas: Circuito %1$s</string>
+    <string name="stats_outage_header">🔴 Sin servicio (Afectaciones)</string>
+    <string name="stats_blackout_count">Número de afectaciones: %1$d</string>
+    <string name="stats_outage_hours">Tiempo sin luz: %1$s</string>
+    <string name="stats_operational_header">🟢 Operativo (Con servicio)</string>
+    <string name="stats_operational_count">Períodos operativos: %1$d</string>
+    <string name="stats_operational_hours">Tiempo con servicio: %1$s</string>
+    <string name="stats_dialog_close">Cerrar</string>
 </resources>

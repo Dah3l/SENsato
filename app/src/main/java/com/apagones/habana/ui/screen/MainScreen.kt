@@ -23,6 +23,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.apagones.habana.parser.MentionMatcher
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -57,8 +60,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -226,7 +232,7 @@ fun MainScreen(viewModel: MainViewModel) {
     }
 }
 
-/** Diálogo de tutorial / Onboarding de bienvenida. */
+/** Diálogo de tutorial / Onboarding de bienvenida con tamaño fijo basado en el viewport y sin cierre al pulsar fuera. */
 @Composable
 private fun OnboardingDialog(
     onDismiss: () -> Unit
@@ -245,51 +251,105 @@ private fun OnboardingDialog(
         stringResource(R.string.onboarding_desc_4)
     )
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(titles[step], fontWeight = FontWeight.Bold) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Spacer(Modifier.height(8.dp))
-                Text(descriptions[step], style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    repeat(titles.size) { index ->
-                        val active = index == step
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .height(8.dp)
-                                .width(if (active) 24.dp else 8.dp)
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    if (step < titles.size - 1) {
-                        step++
-                    } else {
-                        onDismiss()
-                    }
-                }
+    // Obtener dimensiones del viewport para un tamaño fijo proporcional (sin hardcodear altura reducida)
+    val configuration = LocalConfiguration.current
+    val dialogWidth = configuration.screenWidthDp.dp * 0.9f
+    val dialogHeight = configuration.screenHeightDp.dp * 0.45f
+
+    Dialog(
+        onDismissRequest = {},
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false // No se cierra al pulsar fuera del modal
+        )
+    ) {
+        Card(
+            modifier = Modifier
+                .width(dialogWidth)
+                .height(dialogHeight),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(if (step < titles.size - 1) stringResource(R.string.onboarding_next) else stringResource(R.string.onboarding_finish))
-            }
-        },
-        dismissButton = {
-            if (step > 0) {
-                TextButton(onClick = { step-- }) {
-                    Text(stringResource(R.string.onboarding_prev))
+                // Título y contenido con scroll interno
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = titles[step],
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = descriptions[step],
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Indicadores de pasos y botones de navegación
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        repeat(titles.size) { index ->
+                            val active = index == step
+                            Box(
+                                modifier = Modifier
+                                    .padding(horizontal = 4.dp)
+                                    .height(8.dp)
+                                    .width(if (active) 24.dp else 8.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        if (step > 0) {
+                            TextButton(onClick = { step-- }) {
+                                Text(stringResource(R.string.onboarding_prev))
+                            }
+                        } else {
+                            Spacer(Modifier.width(1.dp))
+                        }
+                        TextButton(
+                            onClick = {
+                                if (step < titles.size - 1) {
+                                    step++
+                                } else {
+                                    onDismiss()
+                                }
+                            }
+                        ) {
+                            Text(
+                                if (step < titles.size - 1)
+                                    stringResource(R.string.onboarding_next)
+                                else
+                                    stringResource(R.string.onboarding_finish)
+                            )
+                        }
+                    }
                 }
             }
         }
-    )
+    }
 }
 
 /** Pestaña 0: Monitoreo (Panel de estado y Circuitos). */
@@ -307,6 +367,7 @@ private fun MonitoringTab(
     onOpenBatterySettings: () -> Unit
 ) {
     var circuitToDelete by remember { mutableStateOf<String?>(null) }
+    var selectedCircuitForStats by remember { mutableStateOf<String?>(null) }
 
     // Diálogo de confirmación para eliminar circuito
     if (circuitToDelete != null) {
@@ -331,6 +392,186 @@ private fun MonitoringTab(
                 }
             }
         )
+    }
+
+    // Diálogo de estadísticas de la última semana para el circuito seleccionado con tamaño fijo basado en viewport
+    if (selectedCircuitForStats != null) {
+        val circuit = selectedCircuitForStats!!
+        val stats = remember(circuit, settings.notifications) {
+            calculateCircuitStats(circuit, settings.notifications)
+        }
+
+        // Obtener dimensiones del viewport para un tamaño fijo proporcional (sin hardcodear)
+        val configuration = LocalConfiguration.current
+        val dialogWidth = configuration.screenWidthDp.dp * 0.9f
+        val dialogHeight = configuration.screenHeightDp.dp * 0.65f
+
+        // Combinar y ordenar todos los períodos cronológicamente de más reciente a más antiguo
+        val allIntervals = remember(stats) {
+            buildList {
+                addAll(stats.outageIntervals.map { UnifiedInterval(it.startMillis, it.endMillis, it.isOngoing, true) })
+                addAll(stats.operationalIntervals.map { UnifiedInterval(it.startMillis, it.endMillis, it.isOngoing, false) })
+            }.sortedByDescending { it.startMillis }
+        }
+
+        Dialog(
+            onDismissRequest = {},
+            properties = DialogProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = false // No se cierra al pulsar fuera del modal
+            )
+        ) {
+            Card(
+                modifier = Modifier
+                    .width(dialogWidth)
+                    .height(dialogHeight),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Zona superior FIJA (Título, Resumen general y Título de la lista), siempre visibles
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.stats_dialog_title, circuit),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // 1) Resumen general compacto arriba con ambos estados
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "🔴 Sin servicio",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = "${stats.outageIntervals.size} afectaciones",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = formatDuration(stats.outageMillis),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "🟢 Operativo",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = "${stats.operationalIntervals.size} períodos",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = formatDuration(stats.operationalMillis),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        // 2) Título de la lista cronológica unificada (fijo)
+                        Text(
+                            text = "Historial de períodos (última semana)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Zona central con SCROLL ÚNICAMENTE para los elementos del Historial de períodos
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        if (allIntervals.isEmpty()) {
+                            Text(
+                                text = "No hay registros en la última semana.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (interval in allIntervals) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (interval.isAffected) "🔴" else "🟢",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = formatUnifiedInterval(interval),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = if (interval.isAffected) "Sin servicio" else "Operativo",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (interval.isAffected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Zona inferior FIJA (Botón Cerrar)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { selectedCircuitForStats = null }) {
+                            Text(stringResource(R.string.stats_dialog_close))
+                        }
+                    }
+                }
+            }
+        }
     }
 
     LazyColumn(
@@ -415,7 +656,8 @@ private fun MonitoringTab(
                     isKnown = isKnown,
                     isAffected = isAffected,
                     statusInfo = statusInfo,
-                    onDelete = { circuitToDelete = circuit }
+                    onDelete = { circuitToDelete = circuit },
+                    onClick = { selectedCircuitForStats = circuit }
                 )
             }
         }
@@ -628,14 +870,15 @@ private fun PreferencesTab(
     }
 }
 
-/** Fila de un circuito con indicador de estado (En espera, Afectado u Operativo) y tiempo transcurrido. */
+/** Fila de un circuito con indicador de estado y estadísticas al pulsar. */
 @Composable
 private fun CircuitRow(
     circuit: String,
     isKnown: Boolean,
     isAffected: Boolean,
     statusInfo: CircuitStatusInfo?,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onClick: () -> Unit
 ) {
     val containerColor = when {
         !isKnown -> MaterialTheme.colorScheme.surfaceVariant
@@ -668,7 +911,9 @@ private fun CircuitRow(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Row(
@@ -942,4 +1187,153 @@ private fun openAppNotificationSettings(context: Context) {
     }
     intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
     runCatching { context.startActivity(intent) }
+}
+
+/** Representa un intervalo de tiempo (afectación u operación) con fecha de inicio y fin. */
+data class TimeInterval(
+    val startMillis: Long,
+    val endMillis: Long,
+    val isOngoing: Boolean
+)
+
+/** Estructura para almacenar las estadísticas de un circuito en la última semana. */
+data class CircuitStats(
+    val outageIntervals: List<TimeInterval>,
+    val operationalIntervals: List<TimeInterval>,
+    val outageMillis: Long,
+    val operationalMillis: Long
+)
+
+/**
+ * Calcula las estadísticas de la última semana (intervalos de afectación con sus fechas,
+ * tiempo total sin luz, intervalos operativos con sus fechas y tiempo total con servicio)
+ * para un circuito basándose estrictamente en las notificaciones del historial.
+ */
+private fun calculateCircuitStats(
+    circuit: String,
+    notifications: List<AppNotification>
+): CircuitStats {
+    val now = System.currentTimeMillis()
+    val weekAgo = now - 7L * 24 * 60 * 60 * 1000L
+
+    val allCircuitNotifs = notifications.filter { notif ->
+        MentionMatcher.findMatchingCircuits(notif.text, listOf(circuit)).isNotEmpty()
+    }.sortedBy { it.timestamp }
+
+    val outageIntervals = mutableListOf<TimeInterval>()
+    val operationalIntervals = mutableListOf<TimeInterval>()
+
+    if (allCircuitNotifs.isEmpty()) {
+        return CircuitStats(outageIntervals, operationalIntervals, 0L, 0L)
+    }
+
+    val events = allCircuitNotifs.mapNotNull { notif ->
+        val statuses = MentionMatcher.detectCircuitStatuses(notif.text, listOf(circuit))
+        val statusType = statuses[circuit.uppercase()] ?: return@mapNotNull null
+        Pair(notif.timestamp, statusType)
+    }
+
+    if (events.isEmpty()) {
+        return CircuitStats(outageIntervals, operationalIntervals, 0L, 0L)
+    }
+
+    val priorEvents = events.filter { it.first < weekAgo }
+    val recentEvents = events.filter { it.first >= weekAgo }
+
+    var isCurrentlyAffected: Boolean? = null
+    var lastStateTime: Long = weekAgo
+
+    if (priorEvents.isNotEmpty()) {
+        val lastPrior = priorEvents.last()
+        isCurrentlyAffected = (lastPrior.second == MentionMatcher.StatusType.AFFECTED)
+    } else if (recentEvents.isNotEmpty()) {
+        val firstRecent = recentEvents.first()
+        isCurrentlyAffected = (firstRecent.second == MentionMatcher.StatusType.AFFECTED)
+        lastStateTime = firstRecent.first.coerceAtLeast(weekAgo)
+    }
+
+    var outageMillis = 0L
+    var operationalMillis = 0L
+
+    val eventsToProcess = if (priorEvents.isNotEmpty()) recentEvents else recentEvents.drop(1)
+    var currentState = isCurrentlyAffected
+    var currentIntervalStart = lastStateTime
+
+    for ((eventTime, statusType) in eventsToProcess) {
+        val boundedTime = eventTime.coerceAtLeast(weekAgo)
+        val duration = boundedTime - lastStateTime
+
+        if (duration > 0 && currentState != null) {
+            if (currentState) {
+                outageMillis += duration
+            } else {
+                operationalMillis += duration
+            }
+        }
+
+        val newState = (statusType == MentionMatcher.StatusType.AFFECTED)
+        if (currentState != null && currentState != newState) {
+            if (currentState) {
+                outageIntervals.add(TimeInterval(currentIntervalStart, boundedTime, false))
+            } else {
+                operationalIntervals.add(TimeInterval(currentIntervalStart, boundedTime, false))
+            }
+            currentIntervalStart = boundedTime
+        } else if (currentState == null) {
+            currentIntervalStart = boundedTime
+        }
+
+        currentState = newState
+        lastStateTime = boundedTime
+    }
+
+    // Intervalo final hasta 'now'
+    val finalDuration = now - lastStateTime
+    if (finalDuration > 0 && currentState != null) {
+        if (currentState) {
+            outageMillis += finalDuration
+            outageIntervals.add(TimeInterval(currentIntervalStart, now, true))
+        } else {
+            operationalMillis += finalDuration
+            operationalIntervals.add(TimeInterval(currentIntervalStart, now, true))
+        }
+    } else if (currentState != null && currentIntervalStart < now) {
+        if (currentState) {
+            outageIntervals.add(TimeInterval(currentIntervalStart, now, true))
+        } else {
+            operationalIntervals.add(TimeInterval(currentIntervalStart, now, true))
+        }
+    }
+
+    return CircuitStats(outageIntervals, operationalIntervals, outageMillis, operationalMillis)
+}
+
+/** Formatea una duración en milisegundos a formato legible en español (horas y minutos). */
+private fun formatDuration(millis: Long): String {
+    val totalMinutes = millis / (1000 * 60)
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return if (hours > 0) {
+        "$hours ${if (hours == 1L) "hora" else "horas"}${if (minutes > 0) " y $minutes min" else ""}"
+    } else {
+        "$minutes ${if (minutes == 1L) "minuto" else "minutos"}"
+    }
+}
+
+/** Representa un intervalo unificado para la lista cronológica. */
+data class UnifiedInterval(
+    val startMillis: Long,
+    val endMillis: Long,
+    val isOngoing: Boolean,
+    val isAffected: Boolean // true = sin servicio (🔴), false = operativo (🟢)
+)
+
+/** Formatea un intervalo unificado con fecha y hora en la zona horaria America/Havana. */
+private fun formatUnifiedInterval(interval: UnifiedInterval): String {
+    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).apply {
+        timeZone = TimeZone.getTimeZone("America/Havana")
+    }
+    val startStr = sdf.format(Date(interval.startMillis))
+    val endStr = if (interval.isOngoing) "Actualidad" else sdf.format(Date(interval.endMillis))
+    return "$startStr → $endStr"
 }
