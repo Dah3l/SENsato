@@ -1,7 +1,10 @@
 package com.apagones.habana.worker
 
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import com.apagones.habana.R
 import com.apagones.habana.data.AppNotification
@@ -14,19 +17,28 @@ import com.apagones.habana.parser.TelegramPost
 
 /**
  * Worker que se ejecuta periódicamente (ver [MonitoringScheduler]).
- *
- * Flujo:
- *  1. Lee del DataStore los circuitos y el último id de post visto.
- *  2. Si es el 1º inicio (lastSeen == 0L) o hay circuitos 'En espera', ejecuta un backfill
- *     silencioso (sendPushNotification = false) SIN alterar el lastSeenPostId cuando ya existe.
- *  3. Consulta únicamente posts nuevos (id > lastSeen). Si existen, emite las notificaciones
- *     sonoras correspondientes y SOLO ENTONCES avanza el watermark lastSeenPostId.
- *  4. Registra la revisión y programa el próximo escaneo.
+ * Promovido a Foreground Service para garantizar ejecución constante en segundo plano
+ * incluso si la aplicación está cerrada o quitada de aplicaciones recientes.
  */
 class MonitoringWorker(
     appContext: Context,
     params: WorkerParameters
 ) : CoroutineWorker(appContext, params) {
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val repo = SettingsRepository(applicationContext)
+        val settings = repo.readOnce()
+        val notification = NotificationHelper.buildStatusNotification(applicationContext, settings)
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(
+                NotificationHelper.NOTIF_ID_STATUS,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            ForegroundInfo(NotificationHelper.NOTIF_ID_STATUS, notification)
+        }
+    }
 
     override suspend fun doWork(): Result {
         val context = applicationContext
@@ -39,6 +51,13 @@ class MonitoringWorker(
 
             // Si el usuario pausó el monitoreo, no hacer nada
             if (settings.paused) return Result.success()
+
+            // Promover a Foreground Service para máxima persistencia en segundo plano
+            try {
+                setForeground(getForegroundInfo())
+            } catch (_: Exception) {
+                // Ignorar si el sistema restringe primer plano bajo ciertas condiciones
+            }
 
             val lastSeen = settings.lastSeenPostId
 

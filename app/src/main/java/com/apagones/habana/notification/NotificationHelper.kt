@@ -1,6 +1,7 @@
 package com.apagones.habana.notification
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -36,7 +37,7 @@ object NotificationHelper {
     private const val NOTIF_ID_BASE = 4000
 
     /** Id fijo para la notificación permanente de estado. */
-    private const val NOTIF_ID_STATUS = 1001
+    const val NOTIF_ID_STATUS = 1001
 
     /** Request codes para PendingIntents del estado. */
     private const val REQ_OPEN_APP = 2001
@@ -127,14 +128,9 @@ object NotificationHelper {
     }
 
     /**
-     * Actualiza o publica la notificación permanente de estado en la barra de tareas.
+     * Construye el objeto Notification para el estado permanente del servicio.
      */
-    fun updateStatusNotification(context: Context, settings: AppSettings) {
-        if (!havePermission(context) || !settings.showPersistentNotification) {
-            cancelStatusNotification(context)
-            return
-        }
-
+    fun buildStatusNotification(context: Context, settings: AppSettings): Notification {
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -213,8 +209,22 @@ object NotificationHelper {
                 )
         }
 
+        return builder.build()
+    }
+
+    /**
+     * Actualiza o publica la notificación permanente de estado en la barra de tareas.
+     */
+    fun updateStatusNotification(context: Context, settings: AppSettings) {
+        if (!havePermission(context) || !settings.showPersistentNotification) {
+            cancelStatusNotification(context)
+            return
+        }
+
+        val notification = buildStatusNotification(context, settings)
+
         try {
-            NotificationManagerCompat.from(context).notify(NOTIF_ID_STATUS, builder.build())
+            NotificationManagerCompat.from(context).notify(NOTIF_ID_STATUS, notification)
         } catch (e: SecurityException) {
             // Ignorar si se revocó el permiso de notificaciones dinámicamente
         }
