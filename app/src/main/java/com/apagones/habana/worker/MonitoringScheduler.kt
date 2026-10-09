@@ -34,6 +34,23 @@ object MonitoringScheduler {
         )
     }
 
+    /** Programa una revisión inmediata sin retraso (por ejemplo, al agregar un nuevo circuito desde la UI). */
+    fun scheduleNow(context: Context) {
+        val request = OneTimeWorkRequestBuilder<MonitoringWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            request
+        )
+    }
+
     /** Programa el siguiente escaneo en 2 minutos (llamado por el Worker al finalizar). */
     fun scheduleNext(context: Context) {
         val request = OneTimeWorkRequestBuilder<MonitoringWorker>()

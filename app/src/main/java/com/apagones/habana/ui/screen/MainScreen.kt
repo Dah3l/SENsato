@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import com.apagones.habana.parser.MentionMatcher
+import com.apagones.habana.worker.MonitoringScheduler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -197,7 +198,10 @@ fun MainScreen(viewModel: MainViewModel, initialTab: Int = 0) {
                 onAddCircuit = { normalized ->
                     viewModel.addCircuit(
                         normalized,
-                        onAdded = { newText = "" },
+                        onAdded = {
+                            newText = ""
+                            MonitoringScheduler.scheduleNow(context)
+                        },
                         onDuplicate = {
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar(

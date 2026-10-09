@@ -8,6 +8,7 @@ import com.apagones.habana.data.AppNotification
 import com.apagones.habana.data.SettingsRepository
 import com.apagones.habana.notification.NotificationHelper
 import com.apagones.habana.parser.MentionMatcher
+import com.apagones.habana.parser.SupabasePostSource
 import com.apagones.habana.parser.TelegramChannelParser
 import com.apagones.habana.parser.TelegramPost
 
@@ -16,15 +17,11 @@ import com.apagones.habana.parser.TelegramPost
  *
  * Flujo:
  *  1. Lee del DataStore los circuitos y el último id de post visto.
- *  2. Descarga los posts del canal público con Jsoup ([TelegramChannelParser]).
- *  3. Procesa SOLO los posts con id > último visto:
- *       - si mencionan un circuito del usuario -> notificación local e historial,
- *       - si indican afectación o restablecimiento por proximidad de párrafos -> actualiza el estado visible,
- *       - si contienen "Situación del SEN" y la opción está activa -> notificación e historial.
- *  4. Actualiza el último id visto y la hora de última revisión.
- *
- * En la PRIMERA ejecución no notifica el histórico: solo marca como visto
- * el post más reciente para evitar una avalancha de avisos antiguos.
+ *  2. Si es el 1º inicio (lastSeen == 0L) o hay circuitos 'En espera', ejecuta un backfill
+ *     silencioso (sendPushNotification = false) SIN alterar el lastSeenPostId cuando ya existe.
+ *  3. Consulta únicamente posts nuevos (id > lastSeen). Si existen, emite las notificaciones
+ *     sonoras correspondientes y SOLO ENTONCES avanza el watermark lastSeenPostId.
+ *  4. Registra la revisión y programa el próximo escaneo.
  */
 class MonitoringWorker(
     appContext: Context,
@@ -34,46 +31,87 @@ class MonitoringWorker(
     override suspend fun doWork(): Result {
         val context = applicationContext
         val repo = SettingsRepository(context)
-        val parser = TelegramChannelParser()
+        val supabaseSource = SupabasePostSource()
+        val telegramParser = TelegramChannelParser()
 
         return try {
             val settings = repo.readOnce()
 
-            // Si el usuario pausó el monitoreo, no hacer nada (se reprograma
-            // automáticamente cuando vuelva a activarlo desde la UI).
+            // Si el usuario pausó el monitoreo, no hacer nada
             if (settings.paused) return Result.success()
-
-            // 2. Descargar posts (lanza IOException si no hay red -> retry)
-            val posts = parser.fetchPosts()
-            if (posts.isEmpty()) return Result.retry()
 
             val lastSeen = settings.lastSeenPostId
 
-            // 1ª ejecución: sin estado previo -> no spam del histórico
-            if (lastSeen == 0L) {
-                repo.setLastSeenPostId(posts.maxOf { it.idPost })
-                repo.setLastCheck(System.currentTimeMillis())
-                NotificationHelper.updateStatusNotification(context, repo.readOnce())
-                MonitoringScheduler.scheduleNext(context)
-                return Result.success()
+            // 1. Detectar si hay circuitos monitoreados que siguen 'En espera' (sin estado conocido)
+            val unknownCircuits = settings.circuits.filter { !settings.knownCircuits.contains(it) }
+
+            // 2. BACKFILL SILENCIOSO: Si es la 1ª ejecución (lastSeen == 0L) o hay circuitos en espera,
+            // procesamos publicaciones históricas para actualizar estados SIN mover lastSeenPostId (salvo en el 1º inicio absoluto).
+            if (lastSeen == 0L || unknownCircuits.isNotEmpty()) {
+                val historicalPosts: List<TelegramPost> = try {
+                    supabaseSource.fetchPosts(sinceId = 0L)
+                } catch (_: Exception) {
+                    telegramParser.fetchPosts()
+                }
+
+                if (historicalPosts.isNotEmpty()) {
+                    // Procesar mensajes históricamente para resolver estados e historial sin alertas flotantes
+                    for (post in historicalPosts) {
+                        notifyForPost(
+                            post = post,
+                            circuits = settings.circuits,
+                            notifyNational = false,
+                            context = context,
+                            repo = repo,
+                            sendPushNotification = false
+                        )
+                    }
+
+                    // En la 1ª ejecución absoluta de la app, inicializamos el watermark con el post más reciente visto
+                    if (lastSeen == 0L) {
+                        repo.setLastSeenPostId(historicalPosts.maxOf { it.idPost })
+                        repo.setLastCheck(System.currentTimeMillis())
+                        NotificationHelper.updateStatusNotification(context, repo.readOnce())
+                        MonitoringScheduler.scheduleNext(context)
+                        return Result.success()
+                    }
+                    // NOTA: Si lastSeen > 0L (backfill por nuevo circuito), NO se toca lastSeenPostId aquí.
+                }
             }
 
-            // 3. Posts nuevos = id mayor que el último visto
+            // 3. FETCH NORMAL DE POSTS NUEVOS (id > lastSeen)
+            val posts: List<TelegramPost> = try {
+                supabaseSource.fetchPosts(sinceId = lastSeen)
+            } catch (_: Exception) {
+                telegramParser.fetchPosts()
+            }
+
             val newPosts = posts.filter { it.idPost > lastSeen }
 
-            for (post in newPosts) {
-                notifyForPost(post, settings.circuits, settings.notifyNationalReport, context, repo)
+            if (newPosts.isNotEmpty()) {
+                // Notificar en tiempo real únicamente los posts realmente nuevos
+                for (post in newPosts) {
+                    notifyForPost(
+                        post = post,
+                        circuits = settings.circuits,
+                        notifyNational = settings.notifyNationalReport,
+                        context = context,
+                        repo = repo,
+                        sendPushNotification = true
+                    )
+                }
+
+                // El watermark lastSeenPostId SOLO se avanza con la llegada de posts nuevos verdaderos
+                repo.setLastSeenPostId(newPosts.maxOf { it.idPost })
             }
 
-            // 4. Avanzar el watermark y registrar la revisión
-            repo.setLastSeenPostId(posts.maxOf { it.idPost })
+            // 4. Registrar la revisión exitosa y programar el próximo escaneo
             repo.setLastCheck(System.currentTimeMillis())
             NotificationHelper.updateStatusNotification(context, repo.readOnce())
             MonitoringScheduler.scheduleNext(context)
 
             Result.success()
-        } catch (e: Exception) {
-            // Errores de red o de parseo: reintentar en la siguiente ventana
+        } catch (_: Exception) {
             Result.retry()
         }
     }
@@ -84,7 +122,8 @@ class MonitoringWorker(
         circuits: List<String>,
         notifyNational: Boolean,
         context: Context,
-        repo: SettingsRepository
+        repo: SettingsRepository,
+        sendPushNotification: Boolean = true
     ) {
         // a) Menciones exactas de circuitos del usuario
         val matched = MentionMatcher.findMatchingCircuits(post.text, circuits)
@@ -115,15 +154,18 @@ class MonitoringWorker(
                 MentionMatcher.StatusType.RESTORED -> context.getString(R.string.notif_title_restored, circuit)
                 else -> context.getString(R.string.notif_title_circuit, circuit)
             }
-            NotificationHelper.showNotification(
-                context = context,
-                title = title,
-                text = post.text,
-                postUrl = post.urlPost,
-                // Id único por post y circuito (evita que dos avisos se pisen)
-                notifId = (post.idPost % 100_000).toInt() * 10 + index,
-                timestamp = post.timestamp
-            )
+
+            if (sendPushNotification) {
+                NotificationHelper.showNotification(
+                    context = context,
+                    title = title,
+                    text = post.text,
+                    postUrl = post.urlPost,
+                    notifId = (post.idPost % 100_000).toInt() * 10 + index,
+                    timestamp = post.timestamp
+                )
+            }
+
             repo.addNotification(
                 AppNotification(
                     id = post.idPost * 10 + index,
@@ -138,14 +180,16 @@ class MonitoringWorker(
         // b) Parte nacional del SEN (si el usuario activó la opción)
         if (notifyNational && matched.isEmpty() && MentionMatcher.isNationalReport(post.text)) {
             val title = context.getString(R.string.notif_title_national)
-            NotificationHelper.showNotification(
-                context = context,
-                title = title,
-                text = post.text,
-                postUrl = post.urlPost,
-                notifId = (post.idPost % 100_000).toInt() * 10 + 9,
-                timestamp = post.timestamp
-            )
+            if (sendPushNotification) {
+                NotificationHelper.showNotification(
+                    context = context,
+                    title = title,
+                    text = post.text,
+                    postUrl = post.urlPost,
+                    notifId = (post.idPost % 100_000).toInt() * 10 + 9,
+                    timestamp = post.timestamp
+                )
+            }
             repo.addNotification(
                 AppNotification(
                     id = post.idPost * 10 + 9,
