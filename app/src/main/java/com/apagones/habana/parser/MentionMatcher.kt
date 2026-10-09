@@ -1,22 +1,24 @@
 package com.apagones.habana.parser
 
 /**
- * Lógica pura de detección de menciones y estados.
- * Los emojis ✅, 🟢 o ☑️ por sí solos bastan para catalogar un mensaje como restablecido.
+ * Lógica pura de detección de menciones y estados en mensajes de Telegram.
+ * Clasifica los circuitos por secciones específicas (ej: 🟢Con servicio vs 🛑Afectados)
+ * y usa la proximidad de verbos como fallback para mensajes sin secciones explícitas.
  */
 object MentionMatcher {
 
     /** Frase que identifica el parte nacional del SEN en los posts. */
     const val NATIONAL_REPORT_PHRASE = "Situación del SEN"
 
-    /**
-     * Variante de la frase sin tildes: algunos posts escriben "Situacion del SEN"
-     * y queremos seguir detectándolos aunque cambie la acentuación.
-     */
+    /** Variante de la frase sin tildes. */
     private const val NATIONAL_REPORT_PHRASE_NO_ACCENTS = "Situacion del SEN"
 
     enum class StatusType {
         RESTORED, AFFECTED
+    }
+
+    private enum class SectionType {
+        UNKNOWN, RESTORED, AFFECTED
     }
 
     /** true si el post corresponde al parte nacional del SEN. */
@@ -25,8 +27,9 @@ object MentionMatcher {
             text.contains(NATIONAL_REPORT_PHRASE_NO_ACCENTS, ignoreCase = true)
 
     /**
-     * Analiza el texto del post por párrafos y devuelve un mapa con el estado detectado
-     * para cada circuito mencionado (ej: "L325" -> StatusType.RESTORED, "GC19" -> StatusType.AFFECTED).
+     * Analiza el texto del post clasificando el estado por SECCIONES (🟢Con servicio vs 🛑Afectados),
+     * hereda el estado de la sección activa para cada circuito y utiliza la lógica por proximidad como fallback.
+     * Devuelve un mapa de (circuito en mayúsculas -> StatusType).
      */
     fun detectCircuitStatuses(text: String, circuits: List<String>): Map<String, StatusType> {
         if (circuits.isEmpty() || text.isBlank()) return emptyMap()
@@ -38,27 +41,80 @@ object MentionMatcher {
             return emptyMap()
         }
 
-        val paragraphs = text.split(Regex("\n+"))
-        val globalStatus = detectGlobalStatus(text)
-        val result = mutableMapOf<String, StatusType>()
+        val matchedCircuits = findMatchingCircuits(text, circuits).map { it.uppercase() }.toSet()
+        if (matchedCircuits.isEmpty()) return emptyMap()
 
-        for (circuit in circuits) {
-            val target = circuit.uppercase()
-            val matchingParagraphs = paragraphs.filter { p ->
-                tokenize(p).any { it == target }
+        // Marcadores de sección (insensibles a mayúsculas)
+        val restoredMarkers = listOf("🟢", "con servicio", "restablecido", "reestablecido", "✅", "servicio restablecido", "servicio reestablecido")
+        val affectedMarkers = listOf("🛑", "🔴", "afectados", "afectado", "❌", "sin servicio", "sin corriente")
+
+        val sectionMap = mutableMapOf<String, StatusType>()
+        var currentSection = SectionType.UNKNOWN
+
+        // Recorrer el texto línea por línea para actualizar la sección activa
+        val lines = text.split("\n")
+        for (line in lines) {
+            val lowerLine = line.lowercase()
+
+            // Buscar la última posición de marcadores en la línea
+            var lastRestoredIdx = -1
+            for (marker in restoredMarkers) {
+                val idx = lowerLine.lastIndexOf(marker)
+                if (idx > lastRestoredIdx) lastRestoredIdx = idx
             }
 
-            var circuitStatus: StatusType? = null
-            for (p in matchingParagraphs) {
-                val pStatus = detectGlobalStatus(p)
-                if (pStatus != null) {
-                    circuitStatus = pStatus
-                    break
+            var lastAffectedIdx = -1
+            for (marker in affectedMarkers) {
+                val idx = lowerLine.lastIndexOf(marker)
+                if (idx > lastAffectedIdx) lastAffectedIdx = idx
+            }
+
+            // Si la línea contiene marcadores, la sección activa cambia (gana el último marcador de la línea)
+            if (lastRestoredIdx > -1 || lastAffectedIdx > -1) {
+                currentSection = if (lastRestoredIdx > lastAffectedIdx) {
+                    SectionType.RESTORED
+                } else {
+                    SectionType.AFFECTED
                 }
             }
-            result[target] = circuitStatus ?: globalStatus ?: StatusType.AFFECTED
+
+            // Si la sección actual es conocida, asignar a todos los circuitos mencionados en esta línea
+            // Si un circuito aparece varias veces en el texto, gana la última mención con sección conocida
+            if (currentSection != SectionType.UNKNOWN) {
+                val lineCircuits = findMatchingCircuits(line, circuits)
+                val targetStatus = if (currentSection == SectionType.RESTORED) StatusType.RESTORED else StatusType.AFFECTED
+                for (c in lineCircuits) {
+                    sectionMap[c.uppercase()] = targetStatus
+                }
+            }
         }
-        return result
+
+        // Fallback: para circuitos que no quedaron clasificados en ninguna sección conocida, usar la lógica por párrafos/verbos
+        val globalStatus = detectGlobalStatus(text)
+        val paragraphs = text.split(Regex("\n+"))
+        val resultMap = mutableMapOf<String, StatusType>()
+
+        for (circuit in matchedCircuits) {
+            if (sectionMap.containsKey(circuit)) {
+                resultMap[circuit] = sectionMap[circuit]!!
+            } else {
+                val matchingParagraphs = paragraphs.filter { p ->
+                    tokenize(p).any { it == circuit }
+                }
+
+                var circuitStatus: StatusType? = null
+                for (p in matchingParagraphs) {
+                    val pStatus = detectGlobalStatus(p)
+                    if (pStatus != null) {
+                        circuitStatus = pStatus
+                        break
+                    }
+                }
+                resultMap[circuit] = circuitStatus ?: globalStatus ?: StatusType.AFFECTED
+            }
+        }
+
+        return resultMap
     }
 
     /**

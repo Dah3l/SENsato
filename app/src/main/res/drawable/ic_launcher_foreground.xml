@@ -1,11 +1,75 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Icono vectorial simple: rayo (apagones) sobre fondo transparente -->
+<!-- Primer plano del icono adaptativo: Rayo dorado estilizado a tamaño moderado y limpio -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Resplandor dorado tenue concentrado en el centro -->
     <path
-        android:fillColor="#FFB300"
-        android:pathData="M62,24 L38,58 L52,58 L46,84 L74,46 L58,46 Z" />
+        android:pathData="M54,27 A27,27 0 1,0 54,81 A27,27 0 1,0 54,27 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="27"
+                android:type="radial">
+                <item android:color="#48FFCA28" android:offset="0.0" />
+                <item android:color="#15FFB300" android:offset="0.6" />
+                <item android:color="#00000000" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Chispas / arcos eléctricos suaves -->
+    <path
+        android:pathData="M43,37 Q45,33 41,29 M43,37 Q47,35 45,31"
+        android:strokeWidth="1"
+        android:strokeColor="#FFE082" />
+    <path
+        android:pathData="M65,45 Q69,43 67,39 M65,45 Q71,47 73,43"
+        android:strokeWidth="1"
+        android:strokeColor="#FFE082" />
+    <path
+        android:pathData="M45,63 Q39,65 41,71 M45,63 Q43,69 39,67"
+        android:strokeWidth="1"
+        android:strokeColor="#FFE082" />
+    <path
+        android:pathData="M65,71 Q63,75 67,79 M65,71 Q61,73 63,77"
+        android:strokeWidth="1"
+        android:strokeColor="#FFE082" />
+
+    <!-- Partículas eléctricas sutiles -->
+    <path android:fillColor="#FFECB3" android:pathData="M37,47 A1.2,1.2 0 1,0 37,49.4 A1.2,1.2 0 1,0 37,47 Z" />
+    <path android:fillColor="#FFD54F" android:pathData="M41,40 A1,1 0 1,0 41,42 A1,1 0 1,0 41,40 Z" />
+    <path android:fillColor="#FFE082" android:pathData="M49,32 A1.1,1.1 0 1,0 49,34.2 A1.1,1.1 0 1,0 49,32 Z" />
+    <path android:fillColor="#FFECB3" android:pathData="M70,57 A1.2,1.2 0 1,0 70,59.4 A1.2,1.2 0 1,0 70,57 Z" />
+    <path android:fillColor="#FFD54F" android:pathData="M66,63 A1,1 0 1,0 66,65 A1,1 0 1,0 66,63 Z" />
+    <path android:fillColor="#FFE082" android:pathData="M59,75 A1.1,1.1 0 1,0 59,77.2 A1.1,1.1 0 1,0 59,75 Z" />
+
+    <!-- Rayo dorado centrado con proporciones armónicas -->
+    <path
+        android:pathData="M63,24 L37,52 L51,52 L45,84 L71,49 L56,49 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="37"
+                android:startY="24"
+                android:endX="71"
+                android:endY="84"
+                android:type="linear">
+                <item android:color="#FFF176" android:offset="0.0" />
+                <item android:color="#FFCA28" android:offset="0.35" />
+                <item android:color="#FFB300" android:offset="0.75" />
+                <item android:color="#FF8F00" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Bisel de brillo superior -->
+    <path
+        android:pathData="M63,24 L37,52 L51,52 L48,63 L56,49 L63,24 Z"
+        android:fillColor="#35FFFFFF" />
+
 </vector>

@@ -146,54 +146,74 @@ class MonitoringWorker(
     ) {
         // a) Menciones exactas de circuitos del usuario
         val matched = MentionMatcher.findMatchingCircuits(post.text, circuits)
-        val circuitStatuses = if (matched.isNotEmpty()) {
+        if (matched.isNotEmpty()) {
             repo.markCircuitsKnown(matched)
 
-            // Análisis avanzado por proximidad de párrafos (soporta posts con múltiples estados)
-            val statuses = MentionMatcher.detectCircuitStatuses(post.text, matched)
-            val affectedList = statuses.filter { it.value == MentionMatcher.StatusType.AFFECTED }.keys.toList()
-            val restoredList = statuses.filter { it.value == MentionMatcher.StatusType.RESTORED }.keys.toList()
+            // Obtener el estado actual guardado para evaluar si hubo un cambio real de estado
+            val currentSettings = repo.readOnce()
+            val currentAffectedSet = currentSettings.affectedCircuits.map { it.uppercase() }.toSet()
+            val knownSet = currentSettings.knownCircuits.map { it.uppercase() }.toSet()
 
+            // Clasificación de pares (circuito, estado) por secciones y fallback
+            val circuitStatuses = MentionMatcher.detectCircuitStatuses(post.text, matched)
+
+            val affectedList = mutableListOf<String>()
+            val restoredList = mutableListOf<String>()
+
+            for ((index, circuit) in matched.withIndex()) {
+                val upperCircuit = circuit.uppercase()
+                val statusType = circuitStatuses[upperCircuit] ?: continue
+
+                val isNewAffected = (statusType == MentionMatcher.StatusType.AFFECTED)
+                val isCurrentlyAffected = currentAffectedSet.contains(upperCircuit)
+                val isKnown = knownSet.contains(upperCircuit)
+
+                // Cambio real de estado vs lo guardado (o circuito nuevo)
+                val stateChanged = !isKnown || (isCurrentlyAffected != isNewAffected)
+
+                if (isNewAffected) {
+                    affectedList.add(upperCircuit)
+                } else {
+                    restoredList.add(upperCircuit)
+                }
+
+                // Notificar y registrar en el historial SOLO si cambió el estado vs lo guardado
+                if (stateChanged) {
+                    val title = when (statusType) {
+                        MentionMatcher.StatusType.AFFECTED -> context.getString(R.string.notif_title_affected, circuit)
+                        MentionMatcher.StatusType.RESTORED -> context.getString(R.string.notif_title_restored, circuit)
+                    }
+
+                    if (sendPushNotification) {
+                        NotificationHelper.showNotification(
+                            context = context,
+                            title = title,
+                            text = post.text,
+                            postUrl = post.urlPost,
+                            notifId = (post.idPost % 100_000).toInt() * 10 + index,
+                            timestamp = post.timestamp
+                        )
+                    }
+
+                    repo.addNotification(
+                        AppNotification(
+                            id = post.idPost * 10 + index,
+                            title = title,
+                            text = post.text,
+                            postUrl = post.urlPost,
+                            timestamp = post.timestamp
+                        )
+                    )
+                }
+            }
+
+            // Actualizar mapa de estado en DataStore por cada circuito
             if (affectedList.isNotEmpty()) {
                 repo.setCircuitsAffected(affectedList, true, post.timestamp)
             }
             if (restoredList.isNotEmpty()) {
                 repo.setCircuitsAffected(restoredList, false, post.timestamp)
             }
-            statuses
-        } else {
-            emptyMap()
-        }
-
-        for ((index, circuit) in matched.withIndex()) {
-            val statusType = circuitStatuses[circuit.uppercase()]
-            // Generar título descriptivo según el estado detectado para ese circuito en particular
-            val title = when (statusType) {
-                MentionMatcher.StatusType.AFFECTED -> context.getString(R.string.notif_title_affected, circuit)
-                MentionMatcher.StatusType.RESTORED -> context.getString(R.string.notif_title_restored, circuit)
-                else -> context.getString(R.string.notif_title_circuit, circuit)
-            }
-
-            if (sendPushNotification) {
-                NotificationHelper.showNotification(
-                    context = context,
-                    title = title,
-                    text = post.text,
-                    postUrl = post.urlPost,
-                    notifId = (post.idPost % 100_000).toInt() * 10 + index,
-                    timestamp = post.timestamp
-                )
-            }
-
-            repo.addNotification(
-                AppNotification(
-                    id = post.idPost * 10 + index,
-                    title = title,
-                    text = post.text,
-                    postUrl = post.urlPost,
-                    timestamp = post.timestamp
-                )
-            )
         }
 
         // b) Parte nacional del SEN (si el usuario activó la opción)

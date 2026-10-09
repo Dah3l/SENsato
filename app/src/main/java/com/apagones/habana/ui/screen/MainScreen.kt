@@ -29,7 +29,9 @@ import com.apagones.habana.parser.MentionMatcher
 import com.apagones.habana.worker.MonitoringScheduler
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Surface
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -153,7 +155,27 @@ fun MainScreen(viewModel: MainViewModel, initialTab: Int = 0) {
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.app_name)) },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.padding(end = 10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(6.dp)
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.app_name),
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                        }
+                    },
                     actions = {
                         // Botón de ayuda (?) en la pantalla principal para mostrar el onboarding bajo demanda
                         IconButton(onClick = { showOnboarding = true }) {
@@ -296,12 +318,26 @@ private fun OnboardingDialog(
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    Text(
-                        text = titles[step],
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(4.dp)
+                            )
+                        }
+                        Text(
+                            text = titles[step],
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                     Spacer(Modifier.height(16.dp))
                     Text(
                         text = descriptions[step],
@@ -462,12 +498,26 @@ private fun MonitoringTab(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = stringResource(R.string.stats_dialog_title, circuit),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = MaterialTheme.shapes.small,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.padding(end = 8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(4.dp)
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.stats_dialog_title, circuit),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
 
                         // 1) Resumen general compacto arriba con ambos estados
                         Card(
